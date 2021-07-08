@@ -1,3 +1,4 @@
+/* eslint-disable eqeqeq */
 /*---------------------------------------------------------------------------------------------
  *  Copyright (c) Microsoft Corporation. All rights reserved.
  *  Licensed under the MIT License. See LICENSE in the project root for license information.
@@ -15,8 +16,9 @@ import {
 	TextDocument,
 	WorkspaceConfiguration
 } from 'vscode';
+import { getGoConfig } from './config';
 import { definitionLocation } from './goDeclaration';
-import { getGoConfig, getParametersAndReturnType, isPositionInComment, isPositionInString } from './util';
+import { getParametersAndReturnType, isPositionInComment, isPositionInString } from './util';
 
 export class GoSignatureHelpProvider implements SignatureHelpProvider {
 	constructor(private goConfig?: WorkspaceConfiguration) {}
@@ -134,9 +136,11 @@ export class GoSignatureHelpProvider implements SignatureHelpProvider {
 						parenBalance++;
 						break;
 					case ',':
-						const commaPos = new Position(lineNr, char);
-						if (parenBalance === 0 && !isPositionInString(document, commaPos)) {
-							commas.push(commaPos);
+						{
+							const commaPos = new Position(lineNr, char);
+							if (parenBalance === 0 && !isPositionInString(document, commaPos)) {
+								commas.push(commaPos);
+							}
 						}
 						break;
 				}

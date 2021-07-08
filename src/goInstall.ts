@@ -6,10 +6,11 @@
 import cp = require('child_process');
 import path = require('path');
 import vscode = require('vscode');
+import { getGoConfig } from './config';
 import { toolExecutionEnvironment } from './goEnv';
 import { isModSupported } from './goModules';
 import { outputChannel } from './goStatus';
-import { getBinPath, getCurrentGoPath, getGoConfig, getModuleCache } from './util';
+import { getBinPath, getCurrentGoPath, getModuleCache } from './util';
 import { envPath, getCurrentGoRoot, getCurrentGoWorkspaceFromGOPATH } from './utils/pathUtils';
 
 export async function installCurrentPackage(): Promise<void> {
@@ -60,6 +61,6 @@ export async function installCurrentPackage(): Promise<void> {
 	outputChannel.appendLine(`Installing ${importPath === '.' ? 'current package' : importPath}`);
 
 	cp.execFile(goRuntimePath, args, { env, cwd }, (err, stdout, stderr) => {
-		outputChannel.appendLine(err ? `Installation failed: ${stderr}` : `Installation successful`);
+		outputChannel.appendLine(err ? `Installation failed: ${stderr}` : 'Installation successful');
 	});
 }

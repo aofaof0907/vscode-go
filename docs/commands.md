@@ -1,6 +1,6 @@
 # Commands
 
-In addition to integrated editing features, this extension offers a number of commands, which can be executed manually through the [Command Palette](https://code.visualstudio.com/docs/getstarted/userinterface#_command-palette) (Ctrl+Shift+P).
+In addition to integrated editing features, this extension offers a number of commands, which can be executed manually through the [Command Palette](https://code.visualstudio.com/docs/getstarted/userinterface#_command-palette) (Ctrl+Shift+P on Linux/Windows or Cmd+Shift+P on Mac OS).
 
 Some of these commands are also available in the VS Code context menu (right-click). To control which of these commands show up in the editor context menu, update the [`"go.editorContextMenuCommands"`](settings.md#go.editorContextMenuCommands) setting.
 
@@ -34,6 +34,10 @@ List all the Go tools being used by this extension along with their locations.
 ### `Go: Test Function At Cursor`
 
 Runs a unit test at the cursor.
+
+### `Go: Test Function At Cursor or Test Previous`
+
+Runs a unit test at the cursor if one is found, otherwise re-runs the last executed test.
 
 ### `Go: Subtest At Cursor`
 
@@ -71,6 +75,10 @@ Runs all unit tests from all packages in the current workspace.
 
 Re-runs the last executed test.
 
+### `Go: Debug Previous`
+
+Re-runs the last debugged test run through a codelens or "Go: Debug Test at Cursor" command.
+
 ### `Go: Toggle Test Coverage In Current Package`
 
 Displays test coverage in the current package.
@@ -94,6 +102,10 @@ Generates method stub for implementing the provided interface and inserts at the
 ### `Go: Extract Language Server Logs To Editor`
 
 Extract logs in the `gopls (server)` output channel to the editor.
+
+### `Go: Welcome`
+
+Open the welcome page for the Go extension.
 
 ### `Go: Toggle gc details`
 
@@ -171,6 +183,10 @@ Build the current workspace.
 
 Install the current package.
 
+### `Go: Initialize go.mod`
+
+Run `go mod init` in the workspace folder.
+
 ### `Go: Cancel Running Tests`
 
 Cancels running tests.
@@ -202,3 +218,15 @@ Show the current Go survey configuration
 ### `Go: Reset Survey Configuration`
 
 Reset the current Go survey configuration history
+
+### `Go: Reset Workspace State`
+
+Reset keys in workspace state to undefined.
+
+### `Go: Reset Global State`
+
+Reset keys in global state to undefined.
+
+### `Go: Toggle Workspace Trust Flag`
+
+Toggle the workspace trust flag. Workspace settings that determine tool locations are disabled by default in untrusted workspaces.

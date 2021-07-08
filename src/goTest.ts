@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See LICENSE in the project root for license information.
@@ -23,52 +24,75 @@ import {
 // the last test to be easily re-executed.
 let lastTestConfig: TestConfig;
 
+// lastDebugConfig holds a reference to the last executed DebugConfiguration which allows
+// the last test to be easily re-executed and debugged.
+let lastDebugConfig: vscode.DebugConfiguration;
+let lastDebugWorkspaceFolder: vscode.WorkspaceFolder;
+
 export type TestAtCursorCmd = 'debug' | 'test' | 'benchmark';
+
+class NotFoundError extends Error {}
+
+async function _testAtCursor(goConfig: vscode.WorkspaceConfiguration, cmd: TestAtCursorCmd, args: any) {
+	const editor = vscode.window.activeTextEditor;
+	if (!editor) {
+		throw new NotFoundError('No editor is active.');
+	}
+	if (!editor.document.fileName.endsWith('_test.go')) {
+		throw new NotFoundError('No tests found. Current file is not a test file.');
+	}
+
+	const getFunctions = cmd === 'benchmark' ? getBenchmarkFunctions : getTestFunctions;
+	const testFunctions = await getFunctions(editor.document, null);
+	// We use functionName if it was provided as argument
+	// Otherwise find any test function containing the cursor.
+	const testFunctionName =
+		args && args.functionName
+			? args.functionName
+			: testFunctions.filter((func) => func.range.contains(editor.selection.start)).map((el) => el.name)[0];
+	if (!testFunctionName) {
+		throw new NotFoundError('No test function found at cursor.');
+	}
+
+	await editor.document.save();
+
+	if (cmd === 'debug') {
+		return debugTestAtCursor(editor, testFunctionName, testFunctions, goConfig);
+	} else if (cmd === 'benchmark' || cmd === 'test') {
+		return runTestAtCursor(editor, testFunctionName, testFunctions, goConfig, cmd, args);
+	} else {
+		throw new Error(`Unsupported command: ${cmd}`);
+	}
+}
 
 /**
  * Executes the unit test at the primary cursor using `go test`. Output
  * is sent to the 'Go' channel.
  * @param goConfig Configuration for the Go extension.
- * @param cmd Whether the command is test , benchmark or debug.
+ * @param cmd Whether the command is test, benchmark, or debug.
  * @param args
  */
 export function testAtCursor(goConfig: vscode.WorkspaceConfiguration, cmd: TestAtCursorCmd, args: any) {
-	const editor = vscode.window.activeTextEditor;
-	if (!editor) {
-		vscode.window.showInformationMessage('No editor is active.');
-		return;
-	}
-	if (!editor.document.fileName.endsWith('_test.go')) {
-		vscode.window.showInformationMessage('No tests found. Current file is not a test file.');
-		return;
-	}
+	_testAtCursor(goConfig, cmd, args).catch((err) => {
+		if (err instanceof NotFoundError) {
+			vscode.window.showInformationMessage(err.message);
+		} else {
+			console.error(err);
+		}
+	});
+}
 
-	const getFunctions = cmd === 'benchmark' ? getBenchmarkFunctions : getTestFunctions;
-
-	editor.document.save().then(async () => {
-		try {
-			const testFunctions = await getFunctions(editor.document, null);
-			// We use functionName if it was provided as argument
-			// Otherwise find any test function containing the cursor.
-			const testFunctionName =
-				args && args.functionName
-					? args.functionName
-					: testFunctions
-							.filter((func) => func.range.contains(editor.selection.start))
-							.map((el) => el.name)[0];
-			if (!testFunctionName) {
-				vscode.window.showInformationMessage('No test function found at cursor.');
-				return;
-			}
-
-			if (cmd === 'debug') {
-				await debugTestAtCursor(editor, testFunctionName, testFunctions, goConfig);
-			} else if (cmd === 'benchmark' || cmd === 'test') {
-				await runTestAtCursor(editor, testFunctionName, testFunctions, goConfig, cmd, args);
-			} else {
-				throw new Error('Unsupported command.');
-			}
-		} catch (err) {
+/**
+ * Executes the unit test at the primary cursor if found, otherwise re-runs the previous test.
+ * @param goConfig Configuration for the Go extension.
+ * @param cmd Whether the command is test, benchmark, or debug.
+ * @param args
+ */
+export function testAtCursorOrPrevious(goConfig: vscode.WorkspaceConfiguration, cmd: TestAtCursorCmd, args: any) {
+	_testAtCursor(goConfig, cmd, args).catch((err) => {
+		if (err instanceof NotFoundError) {
+			testPrevious();
+		} else {
 			console.error(err);
 		}
 	});
@@ -195,13 +219,15 @@ async function debugTestAtCursor(
 		name: 'Debug Test',
 		type: 'go',
 		request: 'launch',
-		mode: 'auto',
-		program: editor.document.fileName,
+		mode: 'test',
+		program: path.dirname(editor.document.fileName),
 		env: goConfig.get('testEnvVars', {}),
 		envFile: goConfig.get('testEnvFile'),
 		args,
 		buildFlags: buildFlags.join(' ')
 	};
+	lastDebugConfig = debugConfig;
+	lastDebugWorkspaceFolder = workspaceFolder;
 	return await vscode.debug.startDebugging(workspaceFolder, debugConfig);
 }
 
@@ -325,4 +351,15 @@ export function testPrevious() {
 	goTest(lastTestConfig).then(null, (err) => {
 		console.error(err);
 	});
+}
+
+/**
+ * Runs the previously executed test.
+ */
+export function debugPrevious() {
+	if (!lastDebugConfig) {
+		vscode.window.showInformationMessage('No test has been recently debugged.');
+		return;
+	}
+	return vscode.debug.startDebugging(lastDebugWorkspaceFolder, lastDebugConfig);
 }

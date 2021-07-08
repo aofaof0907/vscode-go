@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See LICENSE in the project root for license information.
@@ -5,14 +6,17 @@
 
 import cp = require('child_process');
 import path = require('path');
+import util = require('util');
 import vscode = require('vscode');
+import { getGoConfig } from './config';
 import { toolExecutionEnvironment } from './goEnv';
+import { getFormatTool } from './goFormat';
 import { installTools } from './goInstallTools';
+import { outputChannel } from './goStatus';
 import { getTool } from './goTools';
 import { getFromGlobalState, updateGlobalState } from './stateUtils';
-import { getBinPath, getGoConfig, getGoVersion, getModuleCache } from './util';
+import { getBinPath, getGoVersion, getModuleCache, getWorkspaceFolderPath } from './util';
 import { envPath, fixDriveCasingInWindows, getCurrentGoRoot } from './utils/pathUtils';
-
 export let GO111MODULE: string;
 
 async function runGoModEnv(folderPath: string): Promise<string> {
@@ -56,7 +60,7 @@ export async function getModFolderPath(fileuri: vscode.Uri, isDir?: boolean): Pr
 		return moduleCache;
 	}
 	const goVersion = await getGoVersion();
-	if (goVersion.lt('1.11')) {
+	if (!goVersion || goVersion.lt('1.11')) {
 		return;
 	}
 
@@ -72,16 +76,10 @@ export async function getModFolderPath(fileuri: vscode.Uri, isDir?: boolean): Pr
 			);
 		}
 
-		if (goConfig['useLanguageServer'] === false) {
-			const promptMsg = 'For better performance using Go modules, you can try the experimental Go language server, gopls.';
-			promptToUpdateToolForModules('gopls', promptMsg, goConfig)
-				.then((choseToUpdate) => {
-					if (choseToUpdate || goConfig['formatTool'] !== 'goreturns') {
-						return;
-					}
-					const promptFormatToolMsg = `The goreturns tool does not support Go modules. Please update the "formatTool" setting to "goimports".`;
-					promptToUpdateToolForModules('switchFormatToolToGoimports', promptFormatToolMsg, goConfig);
-				});
+		if (goConfig['useLanguageServer'] === false && getFormatTool(goConfig) === 'goreturns') {
+			const promptFormatToolMsg =
+				'The goreturns tool does not support Go modules. Please update the "formatTool" setting to "goimports".';
+			promptToUpdateToolForModules('switchFormatToolToGoimports', promptFormatToolMsg, goConfig);
 		}
 	}
 	packagePathToGoModPathMap[pkgPath] = goModEnvResult;
@@ -102,7 +100,7 @@ export async function promptToUpdateToolForModules(
 		return false;
 	}
 	const goVersion = await getGoVersion();
-	const selected = await vscode.window.showInformationMessage(promptMsg, 'Update', 'Later', `Don't show again`);
+	const selected = await vscode.window.showInformationMessage(promptMsg, 'Update', 'Later', "Don't show again");
 	let choseToUpdate = false;
 	switch (selected) {
 		case 'Update':
@@ -127,7 +125,7 @@ export async function promptToUpdateToolForModules(
 			promptedToolsForModules[tool] = true;
 			updateGlobalState('promptedToolsForModules', promptedToolsForModules);
 			break;
-		case `Don't show again`:
+		case "Don't show again":
 			promptedToolsForModules[tool] = true;
 			updateGlobalState('promptedToolsForModules', promptedToolsForModules);
 			break;
@@ -186,4 +184,31 @@ export async function getCurrentPackage(cwd: string): Promise<string> {
 			resolve(pkgs[0]);
 		});
 	});
+}
+
+export async function goModInit() {
+	outputChannel.clear();
+
+	const moduleName = await vscode.window.showInputBox({
+		prompt: 'Enter module name',
+		value: '',
+		placeHolder: 'example.com/m'
+	});
+
+	const goRuntimePath = getBinPath('go');
+	const execFile = util.promisify(cp.execFile);
+	try {
+		const env = toolExecutionEnvironment();
+		const cwd = getWorkspaceFolderPath();
+		outputChannel.appendLine(`Running "${goRuntimePath} mod init ${moduleName}"`);
+		await execFile(goRuntimePath, ['mod', 'init', moduleName], { env, cwd });
+		outputChannel.appendLine('Module successfully initialized. You are ready to Go :)');
+		vscode.commands.executeCommand('vscode.open', vscode.Uri.file(path.join(cwd, 'go.mod')));
+	} catch (e) {
+		outputChannel.appendLine(e);
+		outputChannel.show();
+		vscode.window.showErrorMessage(
+			`Error running "${goRuntimePath} mod init ${moduleName}": See Go output channel for details`
+		);
+	}
 }

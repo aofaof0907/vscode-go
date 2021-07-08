@@ -2,6 +2,14 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
+			"name": "Launch tools/generate",
+			"type": "go",
+			"request": "launch",
+			"mode": "debug",
+			"program": "${workspaceFolder}/tools/generate.go",
+			"cwd": "${workspaceFolder}"
+		},
+		{
 			"name": "Launch Extension",
 			"type": "extensionHost",
 			"request": "launch",
@@ -36,22 +44,6 @@
 			],
 			"sourceMaps": true,
 			"smartStep": true,
-			"preLaunchTask": "npm: webpack"
-		},
-		{
-			"name": "Launch as server (dlv dap)",
-			"type": "node",
-			"protocol": "inspector",
-			"request": "launch",
-			"program": "${workspaceFolder}/dist/debugAdapter2.js",
-			"args": [
-				"--server=4711"
-			],
-			"sourceMaps": true,
-			"smartStep": true,
-			"outFiles": [
-				"${workspaceFolder}/dist/**/*.js"
-			],
 			"preLaunchTask": "npm: webpack"
 		},
 		{

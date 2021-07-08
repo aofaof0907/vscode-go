@@ -5,11 +5,11 @@
 
 import path = require('path');
 import vscode = require('vscode');
+import { getGoConfig } from './config';
 import { toolExecutionEnvironment } from './goEnv';
 import { vetDiagnosticCollection } from './goMain';
 import { diagnosticsStatusBarItem, outputChannel } from './goStatus';
 import {
-	getGoConfig,
 	getGoVersion,
 	getWorkspaceFolderPath,
 	handleDiagnosticErrors,
@@ -105,7 +105,7 @@ export async function goVet(
 	}
 
 	let vetArgs = ['vet', ...args, ...tagsArg, vetWorkspace ? './...' : '.'];
-	if (goVersion.lt('1.10') && args.length) {
+	if (goVersion && goVersion.lt('1.10') && args.length) {
 		vetArgs = ['tool', 'vet', ...args, ...tagsArg, '.'];
 	}
 

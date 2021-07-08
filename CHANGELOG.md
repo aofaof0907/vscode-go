@@ -1,3 +1,394 @@
+## V0.26.0 - 17 Jun, 2021
+
+📣 [`Delve`'s native DAP implementation](https://github.com/golang/vscode-go/blob/master/docs/dlv-dap.md) is now available for use. In order to use this new debug adapter (`dlv-dap`) when debugging Go programs, add the following settings in your `settings.json`:
+
+```json5
+    "go.delveConfig": {
+        "debugAdapter": "dlv-dap",
+    },
+```
+
+Please learn more about [the new adapter's features and configuration parameters](https://github.com/golang/vscode-go/blob/master/docs/dlv-dap.md), and share your feedback and report the issues in our issue tracker.
+
+A list of all issues and changes can be found in the [v0.26.0 milestone](https://github.com/golang/vscode-go/milestone/30?closed=1) and [commit history](https://github.com/golang/vscode-go/compare/v0.25.1...v0.26.0).
+
+### Enhancements
+- `dlv-dap` is ready for use in local debugging.
+- Added the new `"Go: Test Function At Cursor or Test Previous"` command. ([PR 1509](https://github.com/golang/vscode-go/pull/1509))
+- `"Go: Add Imports"` command uses `gopls` instead of `gopkg`. This requires `gopls@v0.7.0` or newer. ([Go Issue 43351](https://github.com/golang/go/issues/43351))
+
+### Fixes
+- Fixed `"Go: Lint Workspace"` that failed no editor is active. ([Issue 1520](https://github.com/golang/vscode-go/issues/1520))
+- Fixed `gopls` crash caused by Untitled files. ([Issue 1559](https://github.com/golang/vscode-go/issues/1559))
+
+### Thanks
+Thanks for your contributions, @mislav, @marwan-at-work, @findleyr, @lggomez, @fflewddur, @suzmue, @hyangah!
+
+## v0.25.1 - 24 May, 2021
+
+A list of all issues and changes can be found in the [v0.25.1 milestone](https://github.com/golang/vscode-go/issues?q=is%3Aissue+milestone%3Av0.25.1+is%3Aclosed).
+
+### Fixes
+- Change the default path separator to `/` when applying `substitutePath` debug configuration. ([Issue 1497](https://github.com/golang/vscode-go/issues/1497))
+- Warn users when `go.goroot` setting is used. ([Issue 1501](https://github.com/golang/vscode-go/issues/1501))
+
+### Enhancements
+- Update to latest version of `dlv-dap`. Some of newest additions to `dlv dap` include optimized function detection, exception info, pause, function breakpoints while running, evaluate over hover, set variables. Documentation of current features and limitations can be found in [the documentation](https://github.com/golang/vscode-go/blob/master/docs/dlv-dap.md).
+- Adjusted feedback survey prompt probability.
+
+### Thanks
+Thanks for the contribution, @suzmue, @fflewddur!
+
+## v0.25.0 - 12 May, 2021
+
+A list of all issues and changes can be found in the
+[v0.25.0 milestone](https://github.com/golang/vscode-go/issues?q=is%3Aissue+milestone%3Av0.25.0+is%3Aclosed).
+
+If you have a feature requests for this extension, please file it through the github issue tracker.
+
+### Enhancements
+- Update to latest version of `dlv-dap`. Documentation of current features and limitations can be found in [the documentation](https://github.com/golang/vscode-go/blob/master/docs/dlv-dap.md)
+- Add debug previous command ([Issue 798](https://github.com/golang/vscode-go/issues/798))
+- Add `Go: Initialize go.mod` command to run `go mod init` in the current workspace folder ([Issue 1449](https://github.com/golang/vscode-go/issues/1449))
+- Use `program` in debug configuration to determine mode in `auto` ([Issue 1422](https://github.com/golang/vscode-go/issues/1422))
+- Auto update `dlv-dap` if autoUpdates enabled ([Issue 1404](https://github.com/golang/vscode-go/issues/1404))
+- Set `editor.suggest.snippetsPreventQuickSuggestions` to false by default to enable code completion and quick suggestions inside a snippet ([Issue 839](https://github.com/golang/vscode-go/issues/839))
+
+### Fixes
+- Set the `GOROOT` to the user specified `GOROOT` in `go.goroot`
+- Fixed missing file bug in debug adapter ([Issue 1447](https://github.com/golang/vscode-go/issues/1447))
+- Fixed inconsistent workpsaceFolder value bug in debug configuration ([Issue 1448](https://github.com/golang/vscode-go/issues/1448))
+- Allow `dlv-dap` to shut down gracefully and clean up debugged process ([Issue 120](https://github.com/golang/vscode-go/issues/120))
+
+### Thanks
+
+Thank you for your contribution, @hyangah, @JadenSimon, @rstambler, @polinasok, @rfindley, and @suzmue!
+
+## v0.24.2 - 19 Apr, 2021
+A list of all issues and changes can be found in the
+[v0.24.2 milestone](https://github.com/golang/vscode-go/issues?q=is%3Aissue+milestone%3Av0.24.2+is%3Aclosed).
+
+### Fixes
+- Fixed regression in the `lintOnSave` feature. ([Issue 1429](https://github.com/golang/vscode-go/issues/1429))
+- Fixed `dlv-dap` installation to correcly use `GOBIN` environment variable. ([Issue 1430](https://github.com/golang/vscode-go/issues/1430))
+- Fixed duplicate error notifications when missing `dlv-dap`. ([Issue 1426](https://github.com/golang/vscode-go/issues/1426))
+
+## Enhancements
+- Updated the minimum required dlv-dap version. The new version includes support for
+[`substitutePath`](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#launch-configurations) and shadowed variable annotation.
+
+## v0.24.1 - 15 Apr, 2021
+
+### Enhancements
+- Cleaned up launch configuration snippets for easier debug setup
+- To use `dlv-dap` by default for all launch configurations (including codelenses), set the `debugAdapter` field in the `go.delveConfig` setting ([Issue 1293](https://github.com/golang/vscode-go/issues/1293))
+- The list of debugging features only available with `dlv-dap` is now available [here](https://github.com/golang/vscode-go/issues?q=is%3Aissue+label%3Afixedindlvdaponly)
+- Updated extension settings to match gopls v0.6.10
+
+### Fixes
+- Tightened the test function detection regex for codelenses ([Issue 1417](https://github.com/golang/vscode-go/issues/1417))
+- Show error message when dlv-dap fails to launch ([Issue 1413](https://github.com/golang/vscode-go/issues/1413))
+- Corrected install instructions for dlv-dap in popup ([Issue 1395](https://github.com/golang/vscode-go/issues/1395))
+
+## Code Health
+- Updated latest version of dlv-dap and gopls (v0.6.10)
+## v0.24.0 - 6th Apr, 2021
+
+🧪 We re-enabled the option to use `dlv dap` (Delve's native DAP implementation) instead of the old debug
+adapter when debugging go code. See [the documentation](https://github.com/golang/vscode-go/blob/master/docs/dlv-dap.md#how-to-use-dlv-dap)
+to learn more about Delve's native DAP implementation, and how to choose `dlv dap`.
+
+Full list of issues and changes can be found in the [v0.24.0 milestone](https://github.com/golang/vscode-go/milestone/25) and the [changes since v0.23.3](https://github.com/golang/vscode-go/compare/v0.23.3...release).
+
+### Enhancements
+* Supports custom format tools when gopls is enabled. ([Issue 1238](https://github.com/golang/vscode-go/issues/1238))
+* Allows to use `dlv dap` for debugging.
+
+### Fixes
+* Do not lint with `staticcheck` if it is enabled in `gopls`. ([CL 301053](https://go-review.googlesource.com/c/vscode-go/+/301053))
+* Use `go list` to check availability of newly released gopls. ([CL 295418](https://go-review.googlesource.com/c/vscode-go/+/295418))
+* Use `go env -json` to query go env variables. ([CL 301730](https://go-review.googlesource.com/c/vscode-go/+/301730))
+* Include gopls, go versions and OS info to the opt-out survey.
+
+### Code Health
+
+* npm audit fix
+* Removed the deprecated `go.overwriteGoplsMiddleware` setting.
+* Added more testing for debug features using dlv-dap.
+
+### Thanks
+
+Thanks for the contributions, @hoanggc, @suzmue, @rstambler, @polinasok!
+
+## v0.23.3 - 19th Mar, 2021
+
+### Enhancements
+
+* Always check the gopls version before activating automated issue reporter regardless of the gopls update settings.
+* Updated the hard-coded latest gopls version to v0.6.8 and the gopls settings.
+
+## v0.23.2 - 12th Mar, 2021
+
+### Fixes
+
+* Updated the gopls version requirement. v0.23.1 requires v0.6.6+. ([Issue 1300](https://github.com/golang/vscode-go/issues/1300))
+
+## v0.23.1 - 11th Mar, 2021
+
+🎉 &nbsp;&nbsp;We use [`staticcheck`](https://staticcheck.io/)
+as the default lint tool. We also changed to use `goimports` for formatting when not using `gopls`.
+
+This version requires VS Code 1.52 or newer.
+
+A list of all issues and changes can be found in the
+[v0.23.1 milestone](https://github.com/golang/vscode-go/milestone/24?closed=1)
+and the [changes since v0.22.1](https://github.com/golang/vscode-go/compare/v0.23.0...v0.23.1)
+
+### Enhancements
+
+* Changed the default lint/format tools. ([Issue 189](https://github.com/golang/vscode-go/issues/189), [192](https://github.com/golang/vscode-go/issues/192))
+* Enhanced `dlv-dap` start logic ([Issue 1270](https://github.com/golang/vscode-go/issues/1270)) and improved output/error message forwarding. ([CL 296930](https://go-review.googlesource.com/c/vscode-go/+/296930))
+
+### Fixes
+
+* Fixed the spurious popup message about the use of `goreturns`. ([CL 300430](https://go-review.googlesource.com/c/vscode-go/+/300430))
+* Fixed orphaned progress notification after restarting `gopls`. ([Issue 1153](https://github.com/golang/vscode-go/issues/1153))
+* Fixed cryptic error messages that appear when `gopls` commands fail. ([Issue 1237](https://github.com/golang/vscode-go/issues/1237))
+* Fixed incomplete folding range info issue caused by parse errors. Complete fix requires `gopls` v0.6.7+ ([Issue 1224](https://github.com/golang/vscode-go/issues/1224))
+
+### Code Health
+* Updated LSP to 3.16.0 (stable), and DAP to 1.44.0.
+
+## v0.23.0 - 4th Mar, 2021
+
+Delve DAP is a new debug adapter embedded in `dlv`, the Go debugger.
+It is written in Go, understands Go's data types and runtime better,
+and is under active development. In this release, we added back
+access to Delve DAP. Delve DAP is still in the experimental stage
+and we appreciate any feedback and bug reports!
+
+A list of all issues and changes can be found in the
+[v0.23.0 milestone](https://github.com/golang/vscode-go/milestone/21?closed=1)
+and the [changes since v0.22.1](https://github.com/golang/vscode-go/compare/v0.22.1...v0.23.0)
+
+### Enhancements
+
+* Improved debugging workflow of attaching to local process.
+([Issue 183](https://github.com/golang/vscode-go/issues/183))
+By setting `processId` to the command name of the process, `${command:pickProcess}`, or
+`${command:pickGoProcess}` a quick pick menu will show a list of processes to choose from.
+* Enabled access to Delve DAP again. Simplified the Delve DAP launch workflow
+and removed the intermediate Node.JS adapter.
+If `"debugAdapter": "dlv-dap"` is specified in launch.json configurations,
+the extension will use Delve DAP for the debug session. When using Delve DAP,
+install the dev version of `dlv` built from master
+(`cd; GO111MODULE=on go get github.com/go-delve/delve/cmd/dlv@master`)
+to pick up the latest bug fixes and feature improvement.
+([Issue 23](https://github.com/golang/vscode-go/issues/23),
+[822](https://github.com/golang/vscode-go/issues/822),
+[844](https://github.com/golang/vscode-go/issues/844))
+* Added an opt-in "Always Update" setting for `gopls` auto-update.
+([Issue 1095](https://github.com/golang/vscode-go/issues/1095))
+* `Go: Reset Global State` and `Go: Reset Workspace State` commands are
+available for easier extension state reset.
+* Enabled survey to collect feedback from users who disabled `gopls`.
+* Added a new setting (`"go.disableConcurrentTests"`) that prevents concurrent `go test` invocation.
+([Issue 1089](https://github.com/golang/vscode-go/issues/1089))
+
+### Fixes
+* [Issue 1113](https://github.com/golang/vscode-go/issues/1113): error message when debugee terminates fast.
+* [Issue 179](https://github.com/golang/vscode-go/issues/179): disable stackTrace error pop-ups during debugging.
+* [CL 290289](https://go-review.googlesource.com/c/vscode-go/+/290289): check incorrect gopls flag usage before automated gopls crash report.
+* [Issue 948](https://github.com/golang/vscode-go/issues/948): show lint tool's name as the lint diagnostic collection name.
+* [Issue 1252](https://github.com/golang/vscode-go/issues/1252): search `C:\Program Files\Go\bin`,
+`C:\Program Files (x86)\Go\bin\go.exe`, the new default Go installation path in Windows.
+
+### Code Health
+
+* Migrated to use `gts` to enforce consistent coding style. ([Issue 1227](https://github.com/golang/vscode-go/issues/1227))
+* Preview mode features are available in both Nightly and the dev version.
+* Enabled integration test in Go module mode.
+* Enabled Delve DAP integration test.
+* Removed the `latest` branch.
+### Thanks
+
+Thanks for your contributions, @Charliekenney23, @eneuschild, @suzmue, @stamblerre, @pjweinbgo, @polinasok!
+
+## v0.22.1 - 8th Feb, 2021
+
+### Enhancements
+- Added error details to automated error reports. ([CL 287952](https://go-review.googlesource.com/c/vscode-go/+/287952))
+- Used clickable links in `"go.languageServerExperimentalFeatures"` setting deprecation error messages. ([CL 288133](https://go-review.googlesource.com/c/vscode-go/+/288133))
+
+### Fixes
+- Fixed a race during language client restarts. ([CL 288372](https://go-review.googlesource.com/c/vscode-go/+/288372), [CL 288352](https://go-review.googlesource.com/c/vscode-go/+/288352))
+- Disabled the language server when using workspace folders over ssh. ([Issue 1171](https://github.com/golang/vscode-go/issues/1171))
+- Added `dlv` to the `"go.alternateTools"` example value list. ([CL 289231](https://go-review.googlesource.com/c/vscode-go/+/289231))
+
+### Code Health
+- Bumped `ini` to 1.3.8 to address a vulnerability report from `npm audit`.
+
+### Thanks
+Thank you for your contribution, @stamblerre, @hyangah, @patrasap0908!
+
+## v0.22.0 - 26th Jan, 2021
+
+- The language server, `gopls`, is enabled by default. ([Issue 1037](https://github.com/golang/vscode-go/issues/1037))
+
+### Enhancements
+- Added the new Go welcome page. ([Issue 949](https://github.com/golang/vscode-go/issues/949))
+- Updated documentation. (troubleshooting, customization, settings guide)
+- Updated the hardcoded latest gopls version to 0.6.4.
+
+### Thanks
+Thank you for your contribution, @suzmue, @stamblerre, @findleyr, @heschik, @hyangah!
+
+## v0.21.1 - 21st Jan, 2021
+A list of all issues and changes can be found in the [v0.21.1 milestone](https://github.com/golang/vscode-go/milestone/22?closed=1).
+
+### Fixes
+- Fixed the `Cannot get property 'get' of undefined` error. ([Issue 1104](https://github.com/golang/vscode-go/issues/1104))
+- Restored the `"go.languageServerExperimentalFeatures"` setting for users who depend on this to run custom vet analyzers. ([Issue 1110](https://github.com/golang/vscode-go/issues/1110))
+
+## v0.21.0 - 20th Jan, 2021
+
+A list of all issues and changes can be found in the [v0.21.0 milestone](https://github.com/golang/vscode-go/milestone/16?closed=1).
+### Enhancements
+- The new `dlvFlags` debug attribute is available for conveniently supply extra flags to `dlv`. ([Issue 978](https://github.com/golang/vscode-go/issues/978))
+- Stop using workspace/folder-level settings from untrusted repositories that can be used to run arbitrary binaries. ([Issue 1024](https://github.com/golang/vscode-go/issues/1094))
+- The extension now deduplicates diagnostics from both the language server and the linter. ([Issue 142](https://github.com/golang/vscode-go/issues/142))
+- Disabled `gotype-live` automatically when the language server is enabled. ([Issue 1021](https://github.com/golang/vscode-go/issues/1021))
+- Removed the `"go.languageServerExperimentalFeatures"` setting. ([CL 280601](https://go-review.googlesource.com/c/vscode-go/+/280601)). The `documentLink` feature is replaced with `gopls`'s [`ui.navigation.importShortcut`](https://github.com/golang/tools/blob/master/gopls/doc/settings.md#importshortcut-enum) setting. The `diagnostics` feature replacement is still under discussion. Please provide feedback in [Issue 50](https://github.com/golang/vscode-go/issues/50).
+
+### Code Health
+* Experimental features that were available only in the nightly extension are enabled in the master branch, and in presubmit & CI tests running on the master branch.
+### Thanks
+
+Thank you for your contribution, @hyangah, @suzmue, @pjweinbgo, @stamblerre!
+
+## v0.20.2 - 8th Jan, 2021
+
+### Enhancement
+- Updated [`"gopls"` settings](https://github.com/golang/vscode-go/blob/705272cba4001b8caf71a1542f376daa2e0be089/docs/settings.md#gopls-1) to match gopls v0.6.2. ([CL 279728](https://go-review.googlesource.com/c/vscode-go/+/279728))
+
+## v0.20.1 - 29th Dec, 2020
+
+### Fixes
+- Fixed a bug that caused incorrect fallback to a common `go` installation path when `go` couldn't be found from the regular PATH ([Issue 1065](https://github.com/golang/vscode-go/issues/1065))
+
+## v0.20.0 - 22nd Dec, 2020
+
+A list of all issues and changes can be found in the [v0.20.0 milestone](https://github.com/golang/vscode-go/milestone/18?closed=1).
+
+### Enhancements
+- Debugging
+    - The new `substitutePath` config property allows users to translate their symlinked directories to the actual paths, and
+    the local paths to the remote paths. See [Launch Configurations](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#launch-configurations)
+    and [Remote Debugging](https://github.com/golang/vscode-go/blob/master/docs/debugging.md#remote-debugging) for details.
+    - Quick pick menu for creating `launch.json` was added. ([Issue 131](https://github.com/golang/vscode-go/issues/131))
+    - Report that `next` is automatically cancelled by delve if interrupted, for example, because breakpoint is set. See [Issue 787](https://github.com/golang/vscode-go/issues/787) for details. ([CL 261078](https://go-review.googlesource.com/c/vscode-go/+/261078))
+- The new `tyf` snippet for `type name func()` was added. ([Issue 1002](https://github.com/golang/vscode-go/issues/1002))
+- Include the `gopls` settings section definition based on `gopls` v0.6.0. ([Issue 197](https://github.com/golang/vscode-go/issues/197), [CL 278355](https://go-review.googlesource.com/c/vscode-go/+/278355))
+- `go.buildFlags` and `go.buildTags` are propagated to `gopls` unless `"gopls": {"buildFlags": ..}` is set. ([Issue 155](https://github.com/golang/vscode-go/issues/155))
+- The new `go.toolsManagement.checkForUpdates` setting allows users to completely disable version checks.
+This deprecates `go.useGoProxyToCheckForToolUpdates`. ([Issue 963](https://github.com/golang/vscode-go/issues/963))
+
+### Fixes
+- Added a workaround for [the VSCode `PATH` setup issue](https://github.com/microsoft/vscode/issues/108003). When `go` isn't
+found from `PATH`, the extension will check `/usr/local/bin` too ([Issue 971](https://github.com/golang/vscode-go/issues/971)).
+- Fixed language client crashes or duplicate language features on the guest side of a VS Live Share session.
+The initial fix added in v0.19.0 for VS Live Share wasn't sufficient. (Issue [605](https://github.com/golang/vscode-go/issues/605), [1024](https://github.com/golang/vscode-go/issues/1024))
+- Stop requiring to install legacy tools when the language server is used. ([Issue 51](https://github.com/golang/vscode-go/issues/51))
+- Update `gopls` if the existing version in the system is older than the minimum required version when the extension enables `gopls` automatically. ([Issue 938](https://github.com/golang/vscode-go/issues/938))
+- Show language server start progress and allow only one outstanding language server restart request. ([Issue 1011](https://github.com/golang/vscode-go/issues/1011))
+- Fixed a gocode-gomod installation bug that caused to ignore `GOBIN` setting. ([CL 275877](https://go-review.googlesource.com/c/vscode-go/+/275877))
+- Marked settings that are not applicable when using the language server. ([Issue 155](https://github.com/golang/vscode-go/issues/155))
+
+### Code Health
+- Deprecated unused settings such as `go.overwriteGoplsMiddleware` and marked deprecated settings.
+- Improved stability of debug functionality tests on windows.
+- Improve the automated gopls issue template message. It includes the extension name and version.
+- Prompt users to file an issue for feedback when they choose to opt out of gopls.
+- CI test workflow now runs `vsce package` to detect packaging errors early.
+
+### Thanks
+Thank you for your contribution, @hyangah, @suzmue, and @programmer04!
+
+
+## v0.19.1 - 9th Dec, 2020
+
+A list of all issues and changes can be found in the [v0.19.1 milestone](https://github.com/golang/vscode-go/milestone/17?closed=1).
+
+### Fixes
+
+- Fixed `Run without Debugging` for Windows. This was a regression found in v0.19.0 ([Issue 918](https://github.com/golang/vscode-go/issues/918)). <!-- CL 276214 -->
+- Fixed snippets that used the reserved keyword ('var') as variable names ([Issue 969](https://github.com/golang/vscode-go/issues/969)).<!-- CL 276213 -->
+- Fixed a file path expansion bug in subtest failure messages ([Issue 956](https://github.com/golang/vscode-go/issues/956)). <!-- CL 276212 -->
+- Fixed unhandled promise rejection error in debug adapter ([Issue 982](https://github.com/golang/vscode-go/issues/982)). <!-- CL 274932 --> 
+
+### Enhancements
+
+- Disabled the experimental `godlvdap` debug configuration from the stable version. It is still available in [Go Nightly](https://marketplace.visualstudio.com/items?itemName=golang.go-nightly) ([Issue 960](https://github.com/golang/vscode-go/issues/960)).
+- Enabled user survey ([Issue 910](https://github.com/golang/vscode-go/issues/910)). <!-- CL 276216 --> 
+
+### Thanks
+
+Thank you for your contribution, @suzmue, @RomanKornev, @hyangah!
+ 
+## v0.19.0 - 25th Nov, 2020
+
+A list of all issues and changes can be found in the [v0.19.0 milestone](https://github.com/golang/vscode-go/milestone/14).
+
+### Community
+
+- Go Nightly users are encouraged to discuss issues and share feedback in the [#vscode-go-nightly](https://gophers.slack.com/archives/C01DQ2KBMNU) slack channel as well as the newly created [Go Nightly mailing list](https://groups.google.com/g/vscode-go-nightly) ([Issue 817](https://github.com/golang/vscode-go/issues/817)) <!-- CL 266419 -->
+- All experiments have been turned on for Go nightly ([Issue 818](https://github.com/golang/vscode-go/issues/818)) <!-- CL 264317 --> <!-- CL 267678 -->
+
+### Enhancements
+
+- Added a snippet for TestMain ([Issue 629](https://github.com/golang/vscode-go/issues/629)) <!-- CL 254497 -->
+- Added `lispcase`, `pascalcase` and `keep` as transform variants for go.addTags ([Issue 906](https://github.com/golang/vscode-go/issues/906), [936](https://github.com/golang/vscode-go/issues/936)) <!-- CL 271357 -->
+- Added support for `gomodifytags`'s --template flag ([Issue 826](https://github.com/golang/vscode-go/issues/826)) <!-- CL 264299 -->
+- Language Server
+	* Upgraded to the latest vscode-languageclient pre-release ([Issue 42148](https://github.com/golang/go/issues/42148)) <!-- CL 266497 -->
+- Debugging
+	* package.json: activate extension onDebugInitialConfigurations ([Issue 131](https://github.com/golang/vscode-go/issues/131)) <!-- CL 267899 -->
+
+
+### Fixes
+
+- Fixed test streaming output handling to correctly add -json flag ([Issue 471](https://github.com/golang/vscode-go/issues/471)) <!-- CL 268839 -->
+- Fixed bug that unnecessarily buffered test output ([Issue 917](https://github.com/golang/vscode-go/issues/917)) <!-- CL 269917 -->
+- Fixed a bug that occurred when choosing a new Go environment using the file picker ([Issue 868](https://github.com/golang/vscode-go/issues/868), [864](https://github.com/golang/vscode-go/issues/864)) <!-- CL 267898 -->
+- Hide running test StatusBarItem after cancelling tests <!-- CL 268838 -->
+- Tool Installation
+	* Unset GOOS/GOARCH/GOROOT/... from tool installation env since the tools need to be built for the host machine ([Issue 628](https://github.com/golang/vscode-go/issues/628)) <!-- CL 264323 -->
+	* Changed the dependency tool installation to use the `go` command chosen from the current `GOROOT/bin` for gocode-gomode too ([Issue 757](https://github.com/golang/vscode-go/issues/757)) <!-- CL 264318 -->
+- Filter out unsupported document types to improve VS Code Live Share experience ([Issue 605](https://github.com/golang/vscode-go/issues/605)) <!-- CL 269157 -->
+- Fixed language server survey computation error <!-- CL 270039 -->
+- Debugging
+	* No longer shows a warning about editing Go files if there is no Go Debug Session running. <!-- CL 269137 -->
+	* Now removes user set '--gcflags' before passing the program to the debugger, since the debugger adds its own flags before building resulting in an error ([Issue 117](https://github.com/golang/vscode-go/issues/117)) <!-- CL 265580 -->
+	* Fixed bug where the working directory passed in by the user is ignored ([Issue 918](https://github.com/golang/vscode-go/issues/918)) <!-- CL 270437 -->
+
+### Code Health
+
+- Debugging
+	* Added additional tests for the debug adapter including for disconnect requests<!-- CL 262297 --> and remote attach scenarios ([Issue 779](https://github.com/golang/vscode-go/issues/779), [790](https://github.com/golang/vscode-go/issues/790)) <!-- CL 262442 -->
+	* Added tests for the debug configuration to test the user settings that should affect the debug configuration
+- Improved the extension contributor experience by renaming the test fixtures folder to avoid errors being shown for these files <!-- CL 264324 -->
+- Language Server Tests
+	- Changed the test environment setup to use single file edit ([Issue 655](https://github.com/golang/vscode-go/issues/655), [832](https://github.com/golang/vscode-go/issues/832)) <!-- CL 266418 --> <!-- CL 270802 --> <!-- CL 268878 -->
+- Adjusted home directory used in gerrit CI since recent changes in kokoro were restricting access ([Issue 833](https://github.com/golang/vscode-go/issues/833)) <!-- CL 264877 -->
+- Updated Github workflows actions/setup-go to v2 <!-- CL 268997 -->
+- Restructured the goTest code to be more readable and easier to test <!-- CL 268837 --> <!-- CL 268839 -->
+- Continued to improve the gopls settings documentation generator ([Issue 197](https://github.com/golang/vscode-go/issues/197)) <!-- CL 265742 -->
+
+
+### Thanks
+
+Thank you for your contribution, @pofl, @hyangah, @perrito666, @pjweinbgo, @quoctruong,  @stamblerre, @skaldesh, and @suzmue!
+
 ## v0.18.1 - 30th Oct, 2020
 
 A list of all issues and changes can be found in the [v0.18.1 milestone](https://github.com/golang/vscode-go/milestone/15?closed=1).

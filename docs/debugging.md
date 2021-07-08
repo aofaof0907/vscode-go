@@ -2,6 +2,8 @@
 
 This document explains how to debug your Go programs in VS Code. The Go debugger is [Delve]. You can read more about it in the [Delve documentation](https://github.com/go-delve/delve/tree/master/Documentation).
 
+📣 Integration with the [Delve's native DAP implementation](https://github.com/golang/vscode-go/tree/master/docs/dlv-dap.md) is available for preview. Please give it a try and provide feedback!
+
 ## Overview
 
 * [Set up](#set-up)
@@ -68,6 +70,8 @@ You may not need to configure any settings to start debugging your programs, but
     * `maxVariableRecurse`: How far to recurse when evaluating nested types (default: `1`).
     * `followPointers`: Automatically dereference pointers (default: `true`).
   * `showGlobalVariables`: Show global variables in the Debug view (default: `false`).
+  * `debugAdapter`: Controls which debug adapter to use (default: `legacy`).
+  * `substitutePath`: Path mappings to apply to get from a path in the editor to a path in the compiled program (default: `[]`).
 
 There are some common cases when you might want to tweak the Delve configurations.
 
@@ -76,7 +80,7 @@ There are some common cases when you might want to tweak the Delve configuration
 
 ## Launch Configurations
 
-To get started debugging, run the command `Debug: Open launch.json`. If you did not already have a `launch.json` file for your project, this will create one for you. It will contain this default configuration, which can be used to debug the current package.
+To get started debugging, run the command `Debug: Open launch.json`. If you did not already have a `launch.json` file for your project, this will create one for you. It will contain this default configuration, which can be used to debug the current package. With mode `auto`, the file that is currently open will determine whether to debug the program as a test. If `program` is instead set to a Go file, that file will determine which mode to run in.
 
 ```json5
 {
@@ -107,12 +111,15 @@ program    | In `test` or `debug` mode, this refers to the absolute path to the 
 env        | Environment variables to use when debugging. Use the format: `{ "NAME": "VALUE" }`. Not applicable to `attach` requests.
 envFile    | Absolute path to a file containing environment variable definitions. The environment variables passed in via the `env` property override the ones in this file.
 args       | Array of command-line arguments to pass to the program being debugged.
-showLog    | If `true`, Delve logs will be printed in the Debug Console panel.
-logOutput  | Comma-separated list of Delve components (`debugger`, `gdbwire`, `lldbout`, `debuglineerr`, `rpc`) that should produce debug output when `showLog` is `true`.
-buildFlags | Build flags to pass to the Go compiler.
-remotePath | If remote debugging (`mode`: `remote`), this should be the absolute path to the package being debugged on the remote machine. See the section on [Remote Debugging](#remote-debugging) for further details. [golang/vscode-go#45](https://github.com/golang/vscode-go/issues/45) is also relevant.
-cwd | The working directory to be used in running the program. If remote debugging (`mode`: `remote`), this should be the absolute path to the working directory being debugged on the local machine. See the section on [Remote Debugging](#remote-debugging) for further details. [golang/vscode-go#45](https://github.com/golang/vscode-go/issues/45) is also relevant.
-processId  | This is the process ID of the executable you want to debug. Applicable only when using the `attach` request in `local` mode.
+showLog    | If `true` and `logDest` is not set, Delve logs will be printed in the Debug Console panel. If `true` and `logDest` is set, logs will be written to the `logDest` file. This corresponds to `dlv`'s `--log` flag.
+logOutput  | Comma-separated list of Delve components (`debugger`, `gdbwire`, `lldbout`, `debuglineerr`, `rpc`) that should produce debug output when `showLog` is `true`. This corresponds to `dlv`'s `--log-output` flag.
+logDest    | Absolute path to the delve log output file. This corresponds to `dlv`'s `--log-dest` flag, but number (used for file descriptor) is disallowed. Supported only in dlv-dap mode on Linux and Mac.
+buildFlags | Build flags to pass to the Go compiler. This corresponds to `dlv`'s `--build-flags` flag.
+dlvFlags   | Extra flags passed to `dlv`. See `dlv help` for the full list of supported flags. This is useful when users need to pass less commonly used or new flags such as `--only-same-user`, `--check-go-version`. Note that some flags such as `--log-output`, `--log`, `--log-dest`, `--api-version` already have corresponding properties in the debug configuration, and flags such as `--listen` and `--headless` are used internally. If they are specified in `dlvFlags`, they may be ignored or cause an error.
+remotePath | If remote debugging (`mode`: `remote`), this should be the absolute path to the package being debugged on the remote machine. See the section on [Remote Debugging](#remote-debugging) for further details. [golang/vscode-go#45](https://github.com/golang/vscode-go/issues/45) is also relevant. Becomes the first mapping in substitutePath.
+substitutePath | An array of mappings from an absolute local path to an absolute remote path that is used by the debuggee. The debug adapter will replace the local path with the remote path in all of the calls. The mappings are applied in order, and the first matching mapping is used. This can be used to map files that have moved since the program was built, different remote paths, and symlinked files or directories. This is intended to be equivalent to the [substitute-path](https://github.com/go-delve/delve/tree/master/Documentation/cli#config) configuration, and will eventually configure substitute-path in Delve directly.
+cwd | The working directory to be used in running the program. If remote debugging (`mode`: `remote`), this should be the absolute path to the working directory being debugged on the local machine. The extension defaults to the workspace folder, or the workspace folder of the open file in multi root workspaces. See the section on [Remote Debugging](#remote-debugging) for further details. [golang/vscode-go#45](https://github.com/golang/vscode-go/issues/45) is also relevant.
+processId  | This is the process ID of the executable you want to debug. Applicable only when using the `attach` request in `local` mode. By setting this to the command name of the process, `${command:pickProcess}`, or`${command:pickGoProcess}` a quick pick menu will show a list of processes to choose from.
 
 ### Specifying [build tags](https://golang.org/pkg/go/build/#hdr-Build_Constraints)
 
@@ -138,7 +145,7 @@ in your launch configuration. This property supports multiple tags, which you ca
 
 ### Specifying other build flags
 
-The flags specified in `buildFlags` and `env.GOFLAGS` are passed to the Go compiler when building your program for debugging. Delve adds `--gcflags='all=-N -l'` to the list of build flags to disable optimizations. User specified buildFlags conflict with this setting, so the extension removes them ([Issue #117](https://github.com/golang/vscode-go/issues/117)). If you wish to debug a program using custom `--gcflags`, build the program using `go build` and launch using `exec` mode:
+The flags specified in `buildFlags` and `env.GOFLAGS` are passed to the Go compiler when building your program for debugging. Delve adds `-gcflags='all=-N -l'` to the list of build flags to disable optimizations. User specified buildFlags conflict with this setting, so the extension removes them ([Issue #117](https://github.com/golang/vscode-go/issues/117)). If you wish to debug a program using custom `-gcflags`, build the program using `go build` and launch using `exec` mode:
 
 ```json
 {
@@ -156,7 +163,8 @@ Note that it is not recommended to debug optimized executables as Delve may not 
 
 Any property in the launch configuration that requires a file path can be specified in terms of [VS Code variables]. Here are some useful ones to know:
 
-* `${workspaceFolder}` refers to the root of the workspace opened in VS Code.
+* `${workspaceFolder}` refers to the root of the workspace opened in VS Code. If using a multi root workspace, you must specify the folder name `${workspaceFolder:folderName}`
+* `${fileWorkspaceFolder}` refers to the the current opened file's workspace folder.
 * `${file}` refers to the currently opened file.
 * `${fileDirname}` refers to the directory containing the currently opened file. This is typically also the name of the Go package containing this file, and as such, can be used to debug the currently opened package.
 
@@ -170,7 +178,7 @@ Below are the available sample configurations:
 
 #### Debug the current file (`Go: Launch file`)
 
-Recall that `${file}` refers to the currently opened file (see [Using VS Code Variables](#using-vs-code-variables)).
+Recall that `${file}` refers to the currently opened file (see [Using VS Code Variables](#using-vs-code-variables)). For debugging a package that consists with multiple files, use `${fileDirname}` instead.
 
 ```json5
 {
@@ -202,7 +210,8 @@ Recall that `${workspaceFolder}` refers to the current workspace (see [Using VS 
 
 #### Debug all tests in the given package (`Go: Launch test package`)
 
-Recall that `${workspaceFolder}` refers to the current workspace (see [Using VS Code Variables](#using-vs-code-variables)).
+A package is a collection of source files in the same directory that are compiled together.
+Recall that `${fileDirname}` refers to the directory of the open file (see [Using VS Code Variables](#using-vs-code-variables)).
 
 ```json5
 {
@@ -216,7 +225,7 @@ Recall that `${workspaceFolder}` refers to the current workspace (see [Using VS 
 
 #### Attach to a running local process via its process ID (`Go: Attach to local process`)
 
-Substitute the `0` below for the process ID (pid) of the process.
+Substitute `processName` with the name of the local process.
 
 ```json5
 {
@@ -224,7 +233,7 @@ Substitute the `0` below for the process ID (pid) of the process.
     "type": "go",
     "request": "attach",
     "mode": "local",
-    "processId": 0
+    "processId": "processName"
 }
 ```
 
@@ -308,7 +317,27 @@ Then, create a remote debug configuration in your `launch.json`.
 
 In the example, the VS Code debugger will run on the same machine as the headless `dlv` server. Make sure to update the `port` and `host` settings to point to your remote machine.
 
-`remotePath` should point to the absolute path of the program being debugged in the remote machine. `cwd` should point to the absolute path of the working directory of the program being debugged on your local machine. This should be the counterpart of the folder in `remotePath`. See [golang/vscode-go#45](https://github.com/golang/vscode-go/issues/45) for updates regarding `remotePath` and `cwd`.
+`remotePath` should point to the absolute path of the program being debugged in the remote machine. `cwd` should point to the absolute path of the working directory of the program being debugged on your local machine. This should be the counterpart of the folder in `remotePath`. See [golang/vscode-go#45](https://github.com/golang/vscode-go/issues/45) for updates regarding `remotePath` and `cwd`. You can also use the equivalent `substitutePath` configuration.
+
+```json5
+{
+    "name": "Launch remote",
+    "type": "go",
+    "request": "attach",
+    "mode": "remote",
+    "substitutePath": [
+		{
+			"from": "/absolute/path/dir/on/local/machine",
+			"to": "/absolute/path/dir/on/remote/machine",
+		},
+	],
+    "port": 2345,
+    "host": "127.0.0.1",
+    "cwd": "/absolute/path/dir/on/local/machine",
+}
+```
+
+If you do not set, `remotePath` or `substitutePath`, then the debug adapter will attempt to infer the path mappings. See [golang/vscode-go#45](https://github.com/golang/vscode-go/issues/45) for more information.
 
 When you run the `Launch remote` target, VS Code will send debugging commands to the `dlv` server you started, instead of launching it's own `dlv` instance against your program.
 
@@ -405,9 +434,25 @@ This error can show up for Mac users using Delve versions 0.12.2 and above. `xco
 
 ### Debugging symlink directories
 
-This extension does not provide support for debugging projects containing symlinks. Make sure that you are setting breakpoints in the files that Go will use to compile your program.
+Since the debugger and go compiler use the actual filenames, extra configuration is required to debug symlinked directories. Use the `substitutePath` property to tell the debugAdapter how to properly translate the paths. For example, if your project lives in `/path/to/actual/helloWorld`, but the project is open in vscode under the linked folder `/path/to/hello`, you can add the following to your config to set breakpoints in the files in `/path/to/hello`:
 
-For updates to symlink support reference [golang/vscode-go#622](https://github.com/golang/vscode-go/issues/622).
+```json5
+{
+    "name": "Launch remote",
+    "type": "go",
+    "request": "launch",
+    "mode": "debug",
+    "program": "/path/to/hello",
+    "substitutePath": [
+		{
+			"from": "/path/to/hello",
+			"to": "/path/to/actual/helloWorld",
+		},
+	],
+}
+```
+
+This extension does not provide general support for debugging projects containing symlinks. If `substitutePath` does not meet your needs, please consider commenting on this issue that contains updates to symlink support reference [golang/vscode-go#622](https://github.com/golang/vscode-go/issues/622).
 
 [Delve]: https://github.com/go-delve/delve
 [VS Code variables]: https://code.visualstudio.com/docs/editor/variables-reference

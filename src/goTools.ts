@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See LICENSE in the project root for license information.
@@ -6,19 +7,31 @@
 'use strict';
 
 import cp = require('child_process');
-import fs = require('fs');
 import moment = require('moment');
 import path = require('path');
 import semver = require('semver');
 import util = require('util');
+import { getFormatTool, usingCustomFormatTool } from './goFormat';
 import { goLiveErrorsEnabled } from './goLiveErrors';
-import { getBinPath, getGoConfig, GoVersion } from './util';
+import { allToolsInformation } from './goToolsInformation';
+import { getBinPath, GoVersion } from './util';
 
 export interface Tool {
 	name: string;
 	importPath: string;
+	modulePath: string;
 	isImportant: boolean;
+	replacedByGopls?: boolean;
 	description: string;
+
+	// If true, consider prerelease version in preview mode
+	// (nightly & dev)
+	usePrereleaseInPreviewMode?: boolean;
+	// If set, this string will be used when installing the tool
+	// instead of the default 'latest'. It can be used when
+	// we need to pin a tool version (`deadbeaf`) or to use
+	// a dev version available in a branch (e.g. `master`).
+	defaultVersion?: string;
 
 	// latestVersion and latestVersionTimestamp are hardcoded default values
 	// for the last known version of the given tool. We also hardcode values
@@ -60,25 +73,20 @@ export function getImportPath(tool: Tool, goVersion: GoVersion): string {
 	return tool.importPath;
 }
 
-export function getImportPathWithVersion(tool: Tool, version: semver.SemVer, goVersion: GoVersion): string {
+export function getImportPathWithVersion(
+	tool: Tool,
+	version: semver.SemVer | string | undefined,
+	goVersion: GoVersion
+): string {
 	const importPath = getImportPath(tool, goVersion);
 	if (version) {
-		return importPath + '@v' + version;
+		if (version instanceof semver.SemVer) {
+			return importPath + '@v' + version;
+		} else {
+			return importPath + '@' + version;
+		}
 	}
 	return importPath;
-}
-/**
- * Returns boolean denoting if the import path for the given tool ends with `/...`
- * and if the version of Go supports installing wildcard paths in module mode.
- * @param tool  	Object of type `Tool` for the Go tool.
- * @param goVersion The current Go version.
- */
-export function disableModulesForWildcard(tool: Tool, goVersion: GoVersion): boolean {
-	const importPath = getImportPath(tool, goVersion);
-	const isWildcard = importPath.endsWith('...');
-
-	// Only Go >= 1.13 supports installing wildcards in module mode.
-	return isWildcard && goVersion.lt('1.13');
 }
 
 export function containsTool(tools: Tool[], tool: Tool): boolean {
@@ -107,12 +115,24 @@ export function isGocode(tool: Tool): boolean {
 	return tool.name === 'gocode' || tool.name === 'gocode-gomod';
 }
 
-export function getConfiguredTools(goVersion: GoVersion): Tool[] {
+export function getConfiguredTools(
+	goVersion: GoVersion,
+	goConfig: { [key: string]: any },
+	goplsConfig: { [key: string]: any }
+): Tool[] {
+	// If language server is enabled, don't suggest tools that are replaced by gopls.
+	// TODO(github.com/golang/vscode-go/issues/388): decide what to do when
+	// the go version is no longer supported by gopls while the legacy tools are
+	// no longer working (or we remove the legacy language feature providers completely).
+	const useLanguageServer = goConfig['useLanguageServer'] && goVersion.gt('1.11');
+
 	const tools: Tool[] = [];
 	function maybeAddTool(name: string) {
 		const tool = allToolsInformation[name];
 		if (tool) {
-			tools.push(tool);
+			if (!useLanguageServer || !tool.replacedByGopls) {
+				tools.push(tool);
+			}
 		}
 	}
 
@@ -139,14 +159,13 @@ export function getConfiguredTools(goVersion: GoVersion): Tool[] {
 	// families are 64-bit, so just try to install it and hope for the best.
 	if (process.arch.match(/^(arm64|mips|mipsel|ppc64|s390|s390x|x64)$/)) {
 		maybeAddTool('dlv');
+		maybeAddTool('dlv-dap');
 	}
 
 	// gocode-gomod needed in go 1.11 & higher
 	if (goVersion.gt('1.10')) {
 		maybeAddTool('gocode-gomod');
 	}
-
-	const goConfig = getGoConfig();
 
 	// Add the doc/def tool that was chosen by the user.
 	switch (goConfig['docsTool']) {
@@ -158,14 +177,23 @@ export function getConfiguredTools(goVersion: GoVersion): Tool[] {
 			break;
 	}
 
-	// Add the format tool that was chosen by the user.
-	maybeAddTool(goConfig['formatTool']);
+	// Only add format tools if the language server is disabled and the
+	// format tool is known to us.
+	if (goConfig['useLanguageServer'] === false && !usingCustomFormatTool(goConfig)) {
+		maybeAddTool(getFormatTool(goConfig));
+	}
 
-	// Add the linter that was chosen by the user.
-	maybeAddTool(goConfig['lintTool']);
+	// Add the linter that was chosen by the user, but don't add staticcheck
+	// if it is enabled via gopls.
+	const goplsStaticheckEnabled = useLanguageServer && goplsStaticcheckEnabled(goConfig, goplsConfig);
+	if (goConfig['lintTool'] !== 'staticcheck' || !goplsStaticheckEnabled) {
+		maybeAddTool(goConfig['lintTool']);
+	}
 
-	// Add the language server for Go versions > 1.10 if user has choosen to do so.
-	if (goConfig['useLanguageServer'] && goVersion.gt('1.10')) {
+	// Add the language server if the user has chosen to do so.
+	// Even though we arranged this to run after the first attempt to start gopls
+	// this is still useful if we've fail to start gopls.
+	if (useLanguageServer) {
 		maybeAddTool('gopls');
 	}
 
@@ -176,192 +204,31 @@ export function getConfiguredTools(goVersion: GoVersion): Tool[] {
 	return tools;
 }
 
-export const allToolsInformation: { [key: string]: Tool } = {
-	'gocode': {
-		name: 'gocode',
-		importPath: 'github.com/mdempsky/gocode',
-		isImportant: true,
-		description: 'Auto-completion, does not work with modules',
-		close: async (env: NodeJS.Dict<string>): Promise<string> => {
-			const toolBinPath = getBinPath('gocode');
-			if (!path.isAbsolute(toolBinPath)) {
-				return '';
-			}
-			try {
-				const execFile = util.promisify(cp.execFile);
-				const { stderr } = await execFile(toolBinPath, ['close'], {env, timeout: 10000});  // give 10sec.
-				if (stderr.indexOf(`rpc: can't find service Server.`) > -1) {
-					return `Installing gocode aborted as existing process cannot be closed. Please kill the running process for gocode and try again.`;
-				}
-			} catch (err) {
-				// This may fail if gocode isn't already running.
-				console.log(`gocode close failed: ${err}`);
-			}
-			return '';
-		},
-	},
-	'gocode-gomod': {
-		name: 'gocode-gomod',
-		importPath: 'github.com/stamblerre/gocode',
-		isImportant: true,
-		description: 'Auto-completion, works with modules',
-		minimumGoVersion: semver.coerce('1.11'),
-	},
-	'gopkgs': {
-		name: 'gopkgs',
-		importPath: 'github.com/uudashr/gopkgs/v2/cmd/gopkgs',
-		isImportant: true,
-		description: 'Auto-completion of unimported packages & Add Import feature'
-	},
-	'go-outline': {
-		name: 'go-outline',
-		importPath: 'github.com/ramya-rao-a/go-outline',
-		isImportant: true,
-		description: 'Go to symbol in file'
-	},
-	'go-symbols': {
-		name: 'go-symbols',
-		importPath: 'github.com/acroca/go-symbols',
-		isImportant: false,
-		description: 'Go to symbol in workspace'
-	},
-	'guru': {
-		name: 'guru',
-		importPath: 'golang.org/x/tools/cmd/guru',
-		isImportant: false,
-		description: 'Find all references and Go to implementation of symbols'
-	},
-	'gorename': {
-		name: 'gorename',
-		importPath: 'golang.org/x/tools/cmd/gorename',
-		isImportant: false,
-		description: 'Rename symbols'
-	},
-	'gomodifytags': {
-		name: 'gomodifytags',
-		importPath: 'github.com/fatih/gomodifytags',
-		isImportant: false,
-		description: 'Modify tags on structs'
-	},
-	'goplay': {
-		name: 'goplay',
-		importPath: 'github.com/haya14busa/goplay/cmd/goplay',
-		isImportant: false,
-		description: 'The Go playground'
-	},
-	'impl': {
-		name: 'impl',
-		importPath: 'github.com/josharian/impl',
-		isImportant: false,
-		description: 'Stubs for interfaces'
-	},
-	'gotype-live': {
-		name: 'gotype-live',
-		importPath: 'github.com/tylerb/gotype-live',
-		isImportant: false,
-		description: 'Show errors as you type'
-	},
-	'godef': {
-		name: 'godef',
-		importPath: 'github.com/rogpeppe/godef',
-		isImportant: true,
-		description: 'Go to definition'
-	},
-	'gogetdoc': {
-		name: 'gogetdoc',
-		importPath: 'github.com/zmb3/gogetdoc',
-		isImportant: true,
-		description: 'Go to definition & text shown on hover'
-	},
-	'gofumports': {
-		name: 'gofumports',
-		importPath: 'mvdan.cc/gofumpt/gofumports',
-		isImportant: false,
-		description: 'Formatter'
-	},
-	'gofumpt': {
-		name: 'gofumpt',
-		importPath: 'mvdan.cc/gofumpt',
-		isImportant: false,
-		description: 'Formatter'
-	},
-	'goimports': {
-		name: 'goimports',
-		importPath: 'golang.org/x/tools/cmd/goimports',
-		isImportant: true,
-		description: 'Formatter'
-	},
-	'goreturns': {
-		name: 'goreturns',
-		importPath: 'github.com/sqs/goreturns',
-		isImportant: true,
-		description: 'Formatter'
-	},
-	'goformat': {
-		name: 'goformat',
-		importPath: 'winterdrache.de/goformat/goformat',
-		isImportant: false,
-		description: 'Formatter'
-	},
-	'golint': {
-		name: 'golint',
-		importPath: 'golang.org/x/lint/golint',
-		isImportant: true,
-		description: 'Linter',
-		minimumGoVersion: semver.coerce('1.9'),
-	},
-	'gotests': {
-		name: 'gotests',
-		importPath: 'github.com/cweill/gotests/...',
-		isImportant: false,
-		description: 'Generate unit tests',
-		minimumGoVersion: semver.coerce('1.9'),
-	},
-	'staticcheck': {
-		name: 'staticcheck',
-		importPath: 'honnef.co/go/tools/...',
-		isImportant: true,
-		description: 'Linter'
-	},
-	'golangci-lint': {
-		name: 'golangci-lint',
-		importPath: 'github.com/golangci/golangci-lint/cmd/golangci-lint',
-		isImportant: true,
-		description: 'Linter'
-	},
-	'revive': {
-		name: 'revive',
-		importPath: 'github.com/mgechev/revive',
-		isImportant: true,
-		description: 'Linter'
-	},
-	'gopls': {
-		name: 'gopls',
-		importPath: 'golang.org/x/tools/gopls',
-		isImportant: false,
-		description: 'Language Server from Google',
-		minimumGoVersion: semver.coerce('1.12'),
-		latestVersion: semver.coerce('0.5.1'),
-		latestVersionTimestamp: moment('2020-09-30', 'YYYY-MM-DD'),
-		latestPrereleaseVersion: semver.coerce('0.5.1'),
-		latestPrereleaseVersionTimestamp: moment('2020-09-30', 'YYYY-MM-DD'),
-	},
-	'dlv': {
-		name: 'dlv',
-		importPath: 'github.com/go-delve/delve/cmd/dlv',
-		isImportant: false,
-		description: 'Debugging'
-	},
-	'fillstruct': {
-		name: 'fillstruct',
-		importPath: 'github.com/davidrjenni/reftools/cmd/fillstruct',
-		isImportant: false,
-		description: 'Fill structs with defaults'
-	},
-	'godoctor': {
-		name: 'godoctor',
-		importPath: 'github.com/godoctor/godoctor',
-		isImportant: false,
-		description: 'Extract to functions and variables'
+export function goplsStaticcheckEnabled(
+	goConfig: { [key: string]: any },
+	goplsConfig: { [key: string]: any }
+): boolean {
+	if (goConfig['useLanguageServer'] !== true || goplsConfig['ui.diagnostic.staticcheck'] !== true) {
+		return false;
 	}
+	const features = goConfig['languageServerExperimentalFeatures'];
+	return !features || features['diagnostics'] === true;
+}
+
+export const gocodeClose = async (env: NodeJS.Dict<string>): Promise<string> => {
+	const toolBinPath = getBinPath('gocode');
+	if (!path.isAbsolute(toolBinPath)) {
+		return '';
+	}
+	try {
+		const execFile = util.promisify(cp.execFile);
+		const { stderr } = await execFile(toolBinPath, ['close'], { env, timeout: 10000 }); // give 10sec.
+		if (stderr.indexOf("rpc: can't find service Server.") > -1) {
+			return 'Installing gocode aborted as existing process cannot be closed. Please kill the running process for gocode and try again.';
+		}
+	} catch (err) {
+		// This may fail if gocode isn't already running.
+		console.log(`gocode close failed: ${err}`);
+	}
+	return '';
 };

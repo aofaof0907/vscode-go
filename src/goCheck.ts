@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-this-alias */
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See LICENSE in the project root for license information.
@@ -7,6 +9,7 @@
 
 import path = require('path');
 import vscode = require('vscode');
+import { getGoplsConfig } from './config';
 import { goBuild } from './goBuild';
 import { buildLanguageServerConfig } from './goLanguageServer';
 import { goLint } from './goLint';
@@ -19,7 +22,7 @@ import { ICheckResult } from './util';
 
 const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left);
 statusBarItem.command = 'go.test.showOutput';
-const neverAgain = { title: `Don't Show Again` };
+const neverAgain = { title: "Don't Show Again" };
 
 export function removeTestStatus(e: vscode.TextDocumentChangeEvent) {
 	if (e.document.isUntitled) {
@@ -91,7 +94,7 @@ export function check(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigurati
 		);
 	}
 
-	if (!!goConfig['testOnSave']) {
+	if (goConfig['testOnSave']) {
 		statusBarItem.show();
 		statusBarItem.text = 'Tests Running';
 		runTest().then((success) => {
@@ -107,8 +110,9 @@ export function check(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigurati
 	}
 
 	if (!!goConfig['lintOnSave'] && goConfig['lintOnSave'] !== 'off') {
+		const goplsConfig = getGoplsConfig(fileUri);
 		runningToolsPromises.push(
-			goLint(fileUri, goConfig, goConfig['lintOnSave']).then((errors) => ({
+			goLint(fileUri, goConfig, goplsConfig, goConfig['lintOnSave']).then((errors) => ({
 				diagnosticCollection: lintDiagnosticCollection,
 				errors
 			}))
@@ -124,7 +128,7 @@ export function check(fileUri: vscode.Uri, goConfig: vscode.WorkspaceConfigurati
 		);
 	}
 
-	if (!!goConfig['coverOnSave']) {
+	if (goConfig['coverOnSave']) {
 		runTest().then((success) => {
 			if (!success) {
 				return [];

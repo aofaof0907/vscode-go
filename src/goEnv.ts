@@ -5,9 +5,10 @@
 
 'use strict';
 
-import path = require('path');
 import vscode = require('vscode');
-import { getCurrentGoPath, getGoConfig, getToolsGopath, resolvePath } from './util';
+import { getGoConfig } from './config';
+import { getCurrentGoPath, getToolsGopath, resolvePath } from './util';
+import { logVerbose } from './goLogging';
 
 // toolInstallationEnvironment returns the environment in which tools should
 // be installed. It always returns a new object.
@@ -59,6 +60,12 @@ export function toolExecutionEnvironment(uri?: vscode.Uri): NodeJS.Dict<string> 
 	if (gopath) {
 		env['GOPATH'] = gopath;
 	}
+
+	// Remove json flag (-json or --json=<any>) from GOFLAGS because it will effect to result format of the execution
+	if (env['GOFLAGS'] && env['GOFLAGS'].includes('-json')) {
+		env['GOFLAGS'] = env['GOFLAGS'].replace(/(^|\s+)-?-json[^\s]*/g, '');
+		logVerbose(`removed -json from GOFLAGS: ${env['GOFLAGS']}`);
+	}
 	return env;
 }
 
@@ -68,8 +75,7 @@ function newEnvironment(): NodeJS.Dict<string> {
 	if (toolsEnvVars && typeof toolsEnvVars === 'object') {
 		Object.keys(toolsEnvVars).forEach(
 			(key) =>
-				(env[key] =
-					typeof toolsEnvVars[key] === 'string' ? resolvePath(toolsEnvVars[key]) : toolsEnvVars[key])
+				(env[key] = typeof toolsEnvVars[key] === 'string' ? resolvePath(toolsEnvVars[key]) : toolsEnvVars[key])
 		);
 	}
 

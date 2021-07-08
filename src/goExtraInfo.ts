@@ -1,3 +1,5 @@
+/* eslint-disable prefer-const */
+/* eslint-disable eqeqeq */
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See LICENSE in the project root for license information.
@@ -7,8 +9,8 @@
 
 import vscode = require('vscode');
 import { CancellationToken, Hover, HoverProvider, Position, TextDocument, WorkspaceConfiguration } from 'vscode';
+import { getGoConfig } from './config';
 import { definitionLocation } from './goDeclaration';
-import { getGoConfig } from './util';
 
 export class GoHoverProvider implements HoverProvider {
 	private goConfig: WorkspaceConfiguration | undefined;
