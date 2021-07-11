@@ -1,9 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
-/* eslint-disable no-case-declarations */
-/* eslint-disable eqeqeq */
-/* eslint-disable no-useless-escape */
-/* eslint-disable no-async-promise-executor */
-/* eslint-disable @typescript-eslint/no-explicit-any */
 /*---------------------------------------------------------
  * Copyright (C) Microsoft Corporation. All rights reserved.
  * Licensed under the MIT License. See LICENSE in the project root for license information.
@@ -43,7 +37,7 @@ import {
 	fixDriveCasingInWindows,
 	getBinPathWithPreferredGopathGoroot,
 	getCurrentGoWorkspaceFromGOPATH,
-	getInferredGopath
+	getInferredGopath,
 } from '../utils/pathUtils';
 import { killProcessTree } from '../utils/processUtils';
 
@@ -96,7 +90,6 @@ interface DebuggerState {
 	currentGoroutine: DebugGoroutine;
 	Running: boolean;
 	Threads: DebugThread[];
-	NextInProgress: boolean;
 }
 
 export interface PackageBuildInfo {
@@ -269,7 +262,6 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 	[key: string]: any;
 	program: string;
 	stopOnEntry?: boolean;
-	dlvFlags?: string[];
 	args?: string[];
 	showLog?: boolean;
 	logOutput?: string;
@@ -281,15 +273,9 @@ interface LaunchRequestArguments extends DebugProtocol.LaunchRequestArguments {
 	host?: string;
 	buildFlags?: string;
 	init?: string;
-	// trace, info, warn are to match goLogging.
-	// In practice, this adapter handles only verbose, log, and error
-	//  verbose === trace,
-	//  log === info === warn,
-	//  error
-	trace?: 'verbose' | 'trace' | 'info' | 'log' | 'warn' | 'error';
+	trace?: 'verbose' | 'log' | 'error';
 	backend?: string;
 	output?: string;
-	substitutePath?: { from: string; to: string }[];
 	/** Delve LoadConfig parameters */
 	dlvLoadConfig?: LoadConfig;
 	dlvToolPath: string;
@@ -312,7 +298,6 @@ interface AttachRequestArguments extends DebugProtocol.AttachRequestArguments {
 	request: 'attach';
 	processId?: number;
 	stopOnEntry?: boolean;
-	dlvFlags?: string[];
 	showLog?: boolean;
 	logOutput?: string;
 	cwd?: string;
@@ -320,9 +305,8 @@ interface AttachRequestArguments extends DebugProtocol.AttachRequestArguments {
 	remotePath?: string;
 	port?: number;
 	host?: string;
-	trace?: 'verbose' | 'trace' | 'info' | 'log' | 'warn' | 'error';
+	trace?: 'verbose' | 'log' | 'error';
 	backend?: string;
-	substitutePath?: { from: string; to: string }[];
 	/** Delve LoadConfig parameters */
 	dlvLoadConfig?: LoadConfig;
 	dlvToolPath: string;
@@ -356,8 +340,8 @@ function logError(...args: any[]) {
 	logger.error(logArgsToString(args));
 }
 
-export function findPathSeparator(filePath: string) {
-	return filePath && filePath.includes('\\') ? '\\' : '/';
+function findPathSeparator(filePath: string) {
+	return filePath.includes('/') ? '/' : '\\';
 }
 
 // Comparing two different file paths while ignoring any different path separators.
@@ -385,21 +369,6 @@ function normalizePath(filePath: string) {
 	return filePath;
 }
 
-// normalizeSeparators will prepare the filepath for comparison in mapping from
-// local to debugger path and from debugger path to local path. All separators are
-// replaced with '/', and the drive name is capitalized for windows paths.
-// Exported for testing
-export function normalizeSeparators(filePath: string): string {
-	// Although the current machine may not be running windows,
-	// the remote machine may be and we need to fix the drive
-	// casing.
-	// This is a workaround for issue in https://github.com/Microsoft/vscode/issues/9448#issuecomment-244804026
-	if (filePath.indexOf(':') === 1) {
-		filePath = filePath.substr(0, 1).toUpperCase() + filePath.substr(1);
-	}
-	return filePath.replace(/\/|\\/g, '/');
-}
-
 function getBaseName(filePath: string) {
 	return filePath.includes('/') ? path.basename(filePath) : path.win32.basename(filePath);
 }
@@ -408,7 +377,7 @@ export class Delve {
 	public program: string;
 	public remotePath: string;
 	public loadConfig: LoadConfig;
-	public connection: Promise<RPCConnection | null>; // null if connection isn't necessary (e.g. noDebug mode)
+	public connection: Promise<RPCConnection>;
 	public onstdout: (str: string) => void;
 	public onstderr: (str: string) => void;
 	public onclose: (code: number) => void;
@@ -510,7 +479,7 @@ export class Delve {
 						log('  export ' + key + '="' + env[key] + '"');
 					});
 				}
-				if (launchArgs.noDebug) {
+				if (!!launchArgs.noDebug) {
 					if (mode === 'debug') {
 						this.noDebug = true;
 						const build = ['build'];
@@ -534,7 +503,7 @@ export class Delve {
 
 						// Use spawnSync to ensure that the binary exists before running it.
 						const buffer = spawnSync(goExe, build, buildOptions);
-						if (buffer.stderr && buffer.stderr.length > 0) {
+						if (buffer.stderr  && buffer.stderr.length > 0) {
 							const str = buffer.stderr.toString();
 							if (this.onstderr) {
 								this.onstderr(str);
@@ -560,7 +529,7 @@ export class Delve {
 
 						// Run the built binary
 						let wd = dirname;
-						if (launchArgs.cwd) {
+						if (!!launchArgs.cwd) {
 							wd = launchArgs.cwd;
 						}
 						const runOptions: { [key: string]: any } = { cwd: wd, env };
@@ -600,7 +569,7 @@ export class Delve {
 							reject(err);
 						});
 
-						resolve(null);
+						resolve();
 						return;
 					}
 				}
@@ -608,12 +577,11 @@ export class Delve {
 
 				if (!existsSync(launchArgs.dlvToolPath)) {
 					log(
-						`Couldn't find dlv at the Go tools path, ${process.env['GOPATH']}${
-							env['GOPATH'] ? ', ' + env['GOPATH'] : ''
+						`Couldn't find dlv at the Go tools path, ${process.env['GOPATH']}${env['GOPATH'] ? ', ' + env['GOPATH'] : ''
 						} or ${envPath}`
 					);
 					return reject(
-						'Cannot find Delve debugger. Install from https://github.com/go-delve/delve & ensure it is in your Go tools path, "GOPATH/bin" or "PATH".'
+						`Cannot find Delve debugger. Install from https://github.com/go-delve/delve & ensure it is in your Go tools path, "GOPATH/bin" or "PATH".`
 					);
 				}
 
@@ -626,11 +594,6 @@ export class Delve {
 					dlvArgs.push(program);
 				} else if (currentGOWorkspace && !launchArgs.packagePathToGoModPathMap[dirname]) {
 					dlvArgs.push(dirname.substr(currentGOWorkspace.length + 1));
-				}
-				// add user-specified dlv flags first. When duplicate flags are specified,
-				// dlv doesn't mind but accepts the last flag value.
-				if (launchArgs.dlvFlags && launchArgs.dlvFlags.length > 0) {
-					dlvArgs.push(...launchArgs.dlvFlags);
 				}
 				dlvArgs.push('--headless=true', `--listen=${launchArgs.host}:${launchArgs.port}`);
 				if (!this.isApiV1) {
@@ -649,6 +612,9 @@ export class Delve {
 				if (launchArgs.buildFlags) {
 					dlvArgs.push('--build-flags=' + launchArgs.buildFlags);
 				}
+				if (launchArgs.init) {
+					dlvArgs.push('--init=' + launchArgs.init);
+				}
 				if (launchArgs.backend) {
 					dlvArgs.push('--backend=' + launchArgs.backend);
 				}
@@ -661,21 +627,16 @@ export class Delve {
 				this.localDebugeePath = this.getLocalDebugeePath(launchArgs.output);
 			} else if (launchArgs.request === 'attach') {
 				if (!launchArgs.processId) {
-					return reject('Missing process ID');
+					return reject(`Missing process ID`);
 				}
 
 				if (!existsSync(launchArgs.dlvToolPath)) {
 					return reject(
-						'Cannot find Delve debugger. Install from https://github.com/go-delve/delve & ensure it is in your Go tools path, "GOPATH/bin" or "PATH".'
+						`Cannot find Delve debugger. Install from https://github.com/go-delve/delve & ensure it is in your Go tools path, "GOPATH/bin" or "PATH".`
 					);
 				}
 
 				dlvArgs.push('attach', `${launchArgs.processId}`);
-				// add user-specified dlv flags first. When duplicate flags are specified,
-				// dlv doesn't mind but accepts the last flag value.
-				if (launchArgs.dlvFlags && launchArgs.dlvFlags.length > 0) {
-					dlvArgs.push(...launchArgs.dlvFlags);
-				}
 				dlvArgs.push('--headless=true', '--listen=' + launchArgs.host + ':' + launchArgs.port.toString());
 				if (!this.isApiV1) {
 					dlvArgs.push('--api-version=2');
@@ -879,7 +840,6 @@ export class GoDebugSession extends LoggingDebugSession {
 	private breakpoints: Map<string, DebugBreakpoint[]>;
 	// Editing breakpoints requires halting delve, skip sending Stop Event to VS Code in such cases
 	private skipStopEventOnce: boolean;
-	private overrideStopReason: string;
 	private debugState: DebuggerState;
 	private delve: Delve;
 	private localPathSeparator: string;
@@ -893,20 +853,17 @@ export class GoDebugSession extends LoggingDebugSession {
 	private localToRemotePathMapping = new Map<string, string>();
 	private remoteToLocalPathMapping = new Map<string, string>();
 
-	// TODO(suzmue): Use delve's implementation of substitute-path.
-	private substitutePath: { from: string; to: string }[];
-
-	private showGlobalVariables = false;
+	private showGlobalVariables: boolean = false;
 
 	private continueEpoch = 0;
 	private continueRequestRunning = false;
-	private nextEpoch = 0;
-	private nextRequestRunning = false;
-	public constructor(debuggerLinesStartAt1: boolean, isServer = false, readonly fileSystem = fs) {
+	public constructor(
+		debuggerLinesStartAt1: boolean,
+		isServer: boolean = false,
+		readonly fileSystem = fs) {
 		super('', debuggerLinesStartAt1, isServer);
 		this.variableHandles = new Handles<DebugVariable>();
 		this.skipStopEventOnce = false;
-		this.overrideStopReason = '';
 		this.stopOnEntry = false;
 		this.debugState = null;
 		this.delve = null;
@@ -968,12 +925,10 @@ export class GoDebugSession extends LoggingDebugSession {
 			// we should have a timeout in case disconnectRequestHelper hangs.
 			await Promise.race([
 				this.disconnectRequestHelper(response, args),
-				new Promise<void>((resolve) =>
-					setTimeout(() => {
-						log('DisconnectRequestHelper timed out after 5s.');
-						resolve();
-					}, 5_000)
-				)
+				new Promise((resolve) => setTimeout(() => {
+					log('DisconnectRequestHelper timed out after 5s.');
+					resolve();
+				}, 5_000))
 			]);
 		}
 
@@ -993,7 +948,7 @@ export class GoDebugSession extends LoggingDebugSession {
 		// The order of the execution may results in strange states that don't allow
 		// the delve connection to fully disconnect.
 		if (this.delve.delveConnectionClosed) {
-			log("Skip disconnectRequestHelper as Delve's connection is already closed.");
+			log(`Skip disconnectRequestHelper as Delve's connection is already closed.`);
 			return;
 		}
 
@@ -1001,7 +956,7 @@ export class GoDebugSession extends LoggingDebugSession {
 		// before disconnecting.
 		if (this.delve.isRemoteDebugging) {
 			if (!(await this.isDebuggeeRunning())) {
-				log("Issuing a continue command before closing Delve's connection as the debuggee is not running.");
+				log(`Issuing a continue command before closing Delve's connection as the debuggee is not running.`);
 				this.continue();
 			}
 		}
@@ -1017,7 +972,7 @@ export class GoDebugSession extends LoggingDebugSession {
 		if (this.stopOnEntry) {
 			this.sendEvent(new StoppedEvent('entry', 1));
 			log('StoppedEvent("entry")');
-		} else if (!(await this.isDebuggeeRunning())) {
+		} else if (!await this.isDebuggeeRunning()) {
 			log('Changing DebugState from Halted to Running');
 			this.continue();
 		}
@@ -1031,6 +986,10 @@ export class GoDebugSession extends LoggingDebugSession {
 	 * For example, if filePath is /usr/local/foo/bar/main.go
 	 * and potentialPaths are abc/xyz/main.go, bar/main.go
 	 * then bar/main.go will be the result.
+	 * In case of tie, however, the shortest path will win.
+	 * For example, if filePath is /usr/local/foo/bar/main.go
+	 * and potentialPaths are test/bar/main.go and bar/main.go
+	 * then bar/main.go will be the best result.
 	 * NOTE: This function assumes that potentialPaths array only contains
 	 * files with the same base names as filePath.
 	 */
@@ -1044,25 +1003,29 @@ export class GoDebugSession extends LoggingDebugSession {
 		}
 
 		const filePathSegments = filePath.split(/\/|\\/).reverse();
-		let bestPathSoFar = potentialPaths[0];
-		let bestSegmentsCount = 0;
+		let bestPathsSoFar: string[] = [];
+		let bestSegmentsCount = -1;
 		for (const potentialPath of potentialPaths) {
 			const potentialPathSegments = potentialPath.split(/\/|\\/).reverse();
 			let i = 0;
-			for (
-				;
-				i < filePathSegments.length &&
-				i < potentialPathSegments.length &&
-				filePathSegments[i] === potentialPathSegments[i];
-				i++
-			) {
-				if (i > bestSegmentsCount) {
-					bestSegmentsCount = i;
-					bestPathSoFar = potentialPath;
-				}
+			for (; i < filePathSegments.length
+				&& i < potentialPathSegments.length
+				// tslint:disable-next-line no-empty
+				&& filePathSegments[i] === potentialPathSegments[i]; i++) { }
+
+			if (i > bestSegmentsCount) {
+				bestSegmentsCount = i;
+				bestPathsSoFar = [potentialPath];
+			}
+
+			if (i === bestSegmentsCount) {
+				bestPathsSoFar.push(potentialPath);
 			}
 		}
-		return bestPathSoFar;
+		const shortestBestPath = bestPathsSoFar.reduce(
+			(firstPath, secondPath) =>
+				firstPath.split(/\/|\\/).length < secondPath.split(/\/|\\/).length ? firstPath : secondPath);
+		return shortestBestPath;
 	}
 
 	/**
@@ -1087,7 +1050,7 @@ export class GoDebugSession extends LoggingDebugSession {
 	}
 
 	protected async toDebuggerPath(filePath: string): Promise<string> {
-		if (this.substitutePath.length === 0) {
+		if (this.delve.remotePath.length === 0) {
 			if (this.delve.isRemoteDebugging) {
 				// The user trusts us to infer the remote path mapping!
 				await this.initializeRemotePackagesAndSources();
@@ -1096,30 +1059,14 @@ export class GoDebugSession extends LoggingDebugSession {
 					return matchedRemoteFile;
 				}
 			}
-
 			return this.convertClientPathToDebugger(filePath);
 		}
 
 		// The filePath may have a different path separator than the localPath
-		// So, update it to use the same separator for ease in path replacement.
-		filePath = normalizeSeparators(filePath);
-		let substitutedPath = filePath;
-		let substituteRule: { from: string; to: string };
-		this.substitutePath.forEach((value) => {
-			if (filePath.startsWith(value.from)) {
-				if (substituteRule) {
-					log(
-						`Substitutition rule ${value.from}:${value.to} applies to local path ${filePath} but it was already mapped to debugger path using rule ${substituteRule.from}:${substituteRule.to}`
-					);
-					return;
-				}
-				substitutedPath = filePath.replace(value.from, value.to);
-				substituteRule = { from: value.from, to: value.to };
-			}
-		});
-		filePath = substitutedPath;
-
-		return (filePath = filePath.replace(/\/|\\/g, this.remotePathSeparator));
+		// So, update it to use the same separator as the remote path to ease
+		// in replacing the local path in it with remote path
+		filePath = filePath.replace(/\/|\\/g, this.remotePathSeparator);
+		return filePath.replace(this.delve.program.replace(/\/|\\/g, this.remotePathSeparator), this.delve.remotePath);
 	}
 
 	/**
@@ -1128,11 +1075,6 @@ export class GoDebugSession extends LoggingDebugSession {
 	 * Cache the result in remoteToLocalPathMapping.
 	 */
 	protected inferLocalPathFromRemotePath(remotePath: string): string | undefined {
-		// Don't try to infer a path for a file that does not exist
-		if (remotePath === '') {
-			return remotePath;
-		}
-
 		if (this.remoteToLocalPathMapping.has(remotePath)) {
 			return this.remoteToLocalPathMapping.get(remotePath);
 		}
@@ -1158,47 +1100,74 @@ export class GoDebugSession extends LoggingDebugSession {
 	}
 
 	/**
-	 * Given a remote path, we attempt to infer the local path by first checking
-	 * if it is in any remote packages. If so, then we attempt to find the matching
-	 * local package and find the local path from there.
+	 * Given a remote path, search the packages from remoteSourcesAndPackages
+	 * to see if we can find a matching package.
+	 * If so, convert the remote to a relative path by comparing it
+	 * to the import path and trimming off unneeded path location.
+	 * For example, if the remote path is /mygopackagepath/pkd/mod/packagepath,
+	 * we will want to trim it off to just packagepath.
 	 */
-	protected inferLocalPathFromRemoteGoPackage(remotePath: string): string | undefined {
-		const remotePackage = this.remoteSourcesAndPackages.remotePackagesBuildInfo.find((buildInfo) =>
-			remotePath.startsWith(buildInfo.DirectoryPath)
-		);
+	protected findRelativeRemotePathFromPackage(remotePath: string): string {
+		// We are using filters instead of find because if there are more than 1 package
+		// in a directory, we may erroneously get the wrong package if we are just
+		// getting the first one.
+		const remotePackages = this.remoteSourcesAndPackages.remotePackagesBuildInfo.filter(
+			(buildInfo) => remotePath.startsWith(buildInfo.DirectoryPath));
 		// Since we know pathToConvert exists in a remote package, we can try to find
 		// that same package in the local client. We can use import path to search for the package.
-		if (!remotePackage) {
-			return;
-		}
-
-		if (!this.remotePathSeparator) {
-			this.remotePathSeparator = findPathSeparator(remotePackage.DirectoryPath);
+		if (!remotePackages.length) {
+			return '';
 		}
 
 		// Escaping package path.
 		// It seems like sometimes Delve don't escape the path properly
 		// so we should do it.
 		remotePath = escapeGoModPath(remotePath);
-		const escapedImportPath = escapeGoModPath(remotePackage.ImportPath);
+		const potentialEscapedImportPaths = remotePackages.map((remotePackage) =>
+			escapeGoModPath(remotePackage.ImportPath));
 
 		// The remotePackage.DirectoryPath should be something like
 		// <gopath|goroot|source>/<import-path>/xyz...
 		// Directory Path can be like "/go/pkg/mod/github.com/google/go-cmp@v0.4.0/cmp"
 		// and Import Path can be like "github.com/google/go-cmp/cmp"
 		// and Remote Path "/go/pkg/mod/github.com/google/go-cmp@v0.4.0/cmp/blah.go"
-		const importPathIndex = remotePath.replace(/@v\d+\.\d+\.\d+[^\/]*/, '').indexOf(escapedImportPath);
-		if (importPathIndex < 0) {
+		const remotePathWithoutVersion = remotePath.replace(/@v\d+\.\d+\.\d+[^\/]*/, '');
+		const escapedImportPath = potentialEscapedImportPaths.find((potentialPath) =>
+			remotePathWithoutVersion.indexOf(potentialPath) >= 0);
+		if (escapedImportPath) {
+			return remotePath
+				.substr(remotePathWithoutVersion.indexOf(escapedImportPath));
+		}
+
+		// Check whether the remote path is a shorter version of import path instead.
+		// For example, import path as "github.com/google/go-cmp/cmp"
+		// and remote path as "go-cmp/cmp/blah.go". In this case, remotePathWithoutVersion is already
+		// all we need!
+		if (potentialEscapedImportPaths.find((potentialPath) =>
+				potentialPath.indexOf(path.dirname(remotePathWithoutVersion)) >= 0)) {
+			return remotePathWithoutVersion;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Given a remote path, we attempt to infer the local path by first checking
+	 * if it is in any remote packages. If so, then we attempt to find the matching
+	 * local package and find the local path from there.
+	 */
+	protected inferLocalPathFromRemoteGoPackage(remotePath: string): string | undefined {
+		let relativeRemotePath = this.findRelativeRemotePathFromPackage(remotePath);
+		if (!relativeRemotePath) {
 			return;
 		}
 
-		const relativeRemotePath = remotePath
-			.substr(importPathIndex)
-			.split(this.remotePathSeparator)
-			.join(this.localPathSeparator);
-		const pathToConvertWithLocalSeparator = remotePath
-			.split(this.remotePathSeparator)
-			.join(this.localPathSeparator);
+		if (!this.remotePathSeparator) {
+			this.remotePathSeparator = findPathSeparator(relativeRemotePath);
+		}
+		relativeRemotePath = relativeRemotePath.split(this.remotePathSeparator).join(this.localPathSeparator);
+
+		const pathToConvertWithLocalSeparator = remotePath.split(this.remotePathSeparator).join(this.localPathSeparator);
 
 		// Scenario 1: The package is inside the current working directory.
 		const localWorkspacePath = path.join(this.delve.program, relativeRemotePath);
@@ -1208,9 +1177,7 @@ export class GoDebugSession extends LoggingDebugSession {
 
 		// Scenario 2: The package is inside GOPATH.
 		const localGoPathImportPath = this.inferLocalPathInGoPathFromRemoteGoPackage(
-			pathToConvertWithLocalSeparator,
-			relativeRemotePath
-		);
+			pathToConvertWithLocalSeparator, relativeRemotePath);
 		if (localGoPathImportPath) {
 			return localGoPathImportPath;
 		}
@@ -1225,17 +1192,14 @@ export class GoDebugSession extends LoggingDebugSession {
 	 * We are assuming that remotePath is of the form <prefix>/src/<suffix>.
 	 */
 	protected inferLocalPathInGoRootFromRemoteGoPackage(
-		remotePathWithLocalSeparator: string,
-		relativeRemotePath: string
-	): string | undefined {
-		const srcIndex = remotePathWithLocalSeparator.indexOf(
-			`${this.localPathSeparator}src${this.localPathSeparator}`
-		);
+		remotePathWithLocalSeparator: string, relativeRemotePath: string): string | undefined {
+		const srcIndex = remotePathWithLocalSeparator.indexOf(`${this.localPathSeparator}src${this.localPathSeparator}`);
 		const goroot = this.getGOROOT();
 		const localGoRootImportPath = path.join(
 			goroot,
-			srcIndex >= 0 ? remotePathWithLocalSeparator.substr(srcIndex) : path.join('src', relativeRemotePath)
-		);
+			srcIndex >= 0
+				? remotePathWithLocalSeparator.substr(srcIndex)
+				: path.join('src', relativeRemotePath));
 		if (this.fileSystem.existsSync(localGoRootImportPath)) {
 			return localGoRootImportPath;
 		}
@@ -1250,9 +1214,7 @@ export class GoDebugSession extends LoggingDebugSession {
 	 * from the import path of the module.
 	 */
 	protected inferLocalPathInGoPathFromRemoteGoPackage(
-		remotePathWithLocalSeparator: string,
-		relativeRemotePath: string
-	): string | undefined {
+		remotePathWithLocalSeparator: string, relativeRemotePath: string): string | undefined {
 		// Scenario 1: The package is inside $GOPATH/pkg/mod.
 		const gopath = (process.env['GOPATH'] || '').split(path.delimiter)[0];
 
@@ -1263,18 +1225,15 @@ export class GoDebugSession extends LoggingDebugSession {
 			gopath,
 			indexGoModCache >= 0
 				? remotePathWithLocalSeparator.substr(indexGoModCache)
-				: path.join('pkg', 'mod', relativeRemotePath)
-		);
+				: path.join('pkg', 'mod', relativeRemotePath));
 		if (this.fileSystem.existsSync(localGoPathImportPath)) {
 			return localGoPathImportPath;
 		}
 
 		// Scenario 2: The file is in a package in $GOPATH/src.
 		const localGoPathSrcPath = path.join(
-			gopath,
-			'src',
-			relativeRemotePath.split(this.remotePathSeparator).join(this.localPathSeparator)
-		);
+			gopath, 'src',
+			relativeRemotePath.split(this.remotePathSeparator).join(this.localPathSeparator));
 		if (this.fileSystem.existsSync(localGoPathSrcPath)) {
 			return localGoPathSrcPath;
 		}
@@ -1285,7 +1244,7 @@ export class GoDebugSession extends LoggingDebugSession {
 	 * have been initialized.
 	 */
 	protected toLocalPath(pathToConvert: string): string {
-		if (this.substitutePath.length === 0) {
+		if (this.delve.remotePath.length === 0) {
 			// User trusts use to infer the path
 			if (this.delve.isRemoteDebugging) {
 				const inferredPath = this.inferLocalPathFromRemotePath(pathToConvert);
@@ -1293,30 +1252,11 @@ export class GoDebugSession extends LoggingDebugSession {
 					return inferredPath;
 				}
 			}
-
 			return this.convertDebuggerPathToClient(pathToConvert);
 		}
 
-		// If there is a substitutePath mapping, then we replace the path.
-		pathToConvert = normalizeSeparators(pathToConvert);
-		let substitutedPath = pathToConvert;
-		let substituteRule: { from: string; to: string };
-		this.substitutePath.forEach((value) => {
-			if (pathToConvert.startsWith(value.to)) {
-				if (substituteRule) {
-					log(
-						`Substitutition rule ${value.from}:${value.to} applies to debugger path ${pathToConvert} but it was already mapped to local path using rule ${substituteRule.from}:${substituteRule.to}`
-					);
-					return;
-				}
-				substitutedPath = pathToConvert.replace(value.to, value.from);
-				substituteRule = { from: value.from, to: value.to };
-			}
-		});
-		pathToConvert = substitutedPath;
-
 		// When the pathToConvert is under GOROOT or Go module cache, replace path appropriately
-		if (!substituteRule) {
+		if (!pathToConvert.startsWith(this.delve.remotePath)) {
 			// Fix for https://github.com/Microsoft/vscode-go/issues/1178
 			const index = pathToConvert.indexOf(`${this.remotePathSeparator}src${this.remotePathSeparator}`);
 			const goroot = this.getGOROOT();
@@ -1332,11 +1272,17 @@ export class GoDebugSession extends LoggingDebugSession {
 			if (gopath && indexGoModCache > 0) {
 				return path.join(
 					gopath,
-					pathToConvert.substr(indexGoModCache).split(this.remotePathSeparator).join(this.localPathSeparator)
+					pathToConvert
+						.substr(indexGoModCache)
+						.split(this.remotePathSeparator)
+						.join(this.localPathSeparator)
 				);
 			}
 		}
-		return pathToConvert.split(this.remotePathSeparator).join(this.localPathSeparator);
+		return pathToConvert
+			.replace(this.delve.remotePath, this.delve.program)
+			.split(this.remotePathSeparator)
+			.join(this.localPathSeparator);
 	}
 
 	protected async setBreakPointsRequest(
@@ -1348,26 +1294,11 @@ export class GoDebugSession extends LoggingDebugSession {
 			log('Debuggee is not running. Setting breakpoints without halting.');
 			await this.setBreakPoints(response, args);
 		} else {
-			// Skip stop event if a continue request is running.
 			this.skipStopEventOnce = this.continueRequestRunning;
-			const haltedDuringNext = this.nextRequestRunning;
-			if (haltedDuringNext) {
-				this.overrideStopReason = 'next cancelled';
-			}
-
 			log(`Halting before setting breakpoints. SkipStopEventOnce is ${this.skipStopEventOnce}.`);
 			this.delve.callPromise('Command', [{ name: 'halt' }]).then(
 				() => {
 					return this.setBreakPoints(response, args).then(() => {
-						// We do not want to continue if it was running a next request, since the
-						// request was automatically cancelled.
-						if (haltedDuringNext) {
-							// Send an output event containing a warning that next was cancelled.
-							const warning =
-								"Setting breakpoints during 'next', 'step in' or 'step out' halted delve and cancelled the next request";
-							this.sendEvent(new OutputEvent(warning, 'stderr'));
-							return;
-						}
 						return this.continue(true).then(null, (err) => {
 							this.logDelveError(err, 'Failed to continue delve after halting it to set breakpoints');
 						});
@@ -1388,14 +1319,9 @@ export class GoDebugSession extends LoggingDebugSession {
 	}
 
 	protected async threadsRequest(response: DebugProtocol.ThreadsResponse): Promise<void> {
-		if (await this.isDebuggeeRunning()) {
+		if ((await this.isDebuggeeRunning())) {
 			// Thread request to delve is synchronous and will block if a previous async continue request didn't return
 			response.body = { threads: [new Thread(1, 'Dummy')] };
-			return this.sendResponse(response);
-		} else if (this.debugState && this.debugState.exited) {
-			// If the program exits very quickly, the initial threadsRequest will complete after it has exited.
-			// A TerminatedEvent has already been sent. d
-			response.body = { threads: [] };
 			return this.sendResponse(response);
 		}
 		log('ThreadsRequest');
@@ -1459,14 +1385,9 @@ export class GoDebugSession extends LoggingDebugSession {
 			async (err, out) => {
 				if (err) {
 					this.logDelveError(err, 'Failed to produce stacktrace');
-					return this.sendErrorResponse(
-						response,
-						2004,
-						'Unable to produce stack trace: "{e}"',
-						{ e: err.toString() },
-						// Disable showUser pop-up since errors already show up under the CALL STACK pane
-						null
-					);
+					return this.sendErrorResponse(response, 2004, 'Unable to produce stack trace: "{e}"', {
+						e: err.toString()
+					});
 				}
 				const locations = this.delve.isApiV1 ? <DebugLocation[]>out : (<StacktraceOut>out).Locations;
 				log('locations', locations);
@@ -1705,26 +1626,24 @@ export class GoDebugSession extends LoggingDebugSession {
 			);
 		} else if (vari.kind === GoReflectKind.Map) {
 			variablesPromise = Promise.all(
-				vari.children
-					.map((_, i) => {
-						// even indices are map keys, odd indices are values
-						if (i % 2 === 0 && i + 1 < vari.children.length) {
-							const mapKey = this.convertDebugVariableToProtocolVariable(vari.children[i]);
-							return loadChildren(
-								`${vari.fullyQualifiedName}.${vari.name}[${mapKey.result}]`,
-								vari.children[i + 1]
-							).then(() => {
-								const mapValue = this.convertDebugVariableToProtocolVariable(vari.children[i + 1]);
-								return {
-									name: mapKey.result,
-									value: mapValue.result,
-									evaluateName: vari.fullyQualifiedName + '[' + mapKey.result + ']',
-									variablesReference: mapValue.variablesReference
-								};
-							});
-						}
-					})
-					.filter((v) => v != null) // remove the null values created by combining keys and values
+				vari.children.map((_, i) => {
+					// even indices are map keys, odd indices are values
+					if (i % 2 === 0 && i + 1 < vari.children.length) {
+						const mapKey = this.convertDebugVariableToProtocolVariable(vari.children[i]);
+						return loadChildren(
+							`${vari.fullyQualifiedName}.${vari.name}[${mapKey.result}]`,
+							vari.children[i + 1]
+						).then(() => {
+							const mapValue = this.convertDebugVariableToProtocolVariable(vari.children[i + 1]);
+							return {
+								name: mapKey.result,
+								value: mapValue.result,
+								evaluateName: vari.fullyQualifiedName + '[' + mapKey.result + ']',
+								variablesReference: mapValue.variablesReference
+							};
+						});
+					}
+				}).filter((v) => v != null) // remove the null values created by combining keys and values
 			);
 		} else {
 			variablesPromise = Promise.all(
@@ -1759,16 +1678,8 @@ export class GoDebugSession extends LoggingDebugSession {
 	}
 
 	protected nextRequest(response: DebugProtocol.NextResponse): void {
-		this.nextEpoch++;
-		const closureEpoch = this.nextEpoch;
-		this.nextRequestRunning = true;
-
 		log('NextRequest');
 		this.delve.call<DebuggerState | CommandOut>('Command', [{ name: 'next' }], (err, out) => {
-			if (closureEpoch === this.continueEpoch) {
-				this.nextRequestRunning = false;
-			}
-
 			if (err) {
 				this.logDelveError(err, 'Failed to next');
 			}
@@ -1782,16 +1693,8 @@ export class GoDebugSession extends LoggingDebugSession {
 	}
 
 	protected stepInRequest(response: DebugProtocol.StepInResponse): void {
-		this.nextEpoch++;
-		const closureEpoch = this.nextEpoch;
-		this.nextRequestRunning = true;
-
 		log('StepInRequest');
 		this.delve.call<DebuggerState | CommandOut>('Command', [{ name: 'step' }], (err, out) => {
-			if (closureEpoch === this.continueEpoch) {
-				this.nextRequestRunning = false;
-			}
-
 			if (err) {
 				this.logDelveError(err, 'Failed to step in');
 			}
@@ -1805,16 +1708,8 @@ export class GoDebugSession extends LoggingDebugSession {
 	}
 
 	protected stepOutRequest(response: DebugProtocol.StepOutResponse): void {
-		this.nextEpoch++;
-		const closureEpoch = this.nextEpoch;
-		this.nextRequestRunning = true;
-
 		log('StepOutRequest');
 		this.delve.call<DebuggerState | CommandOut>('Command', [{ name: 'stepOut' }], (err, out) => {
-			if (closureEpoch === this.continueEpoch) {
-				this.nextRequestRunning = false;
-			}
-
 			if (err) {
 				this.logDelveError(err, 'Failed to step out');
 			}
@@ -1857,41 +1752,32 @@ export class GoDebugSession extends LoggingDebugSession {
 		// command call. This is supported only with APIv2.
 		const isCallCommand = args.expression.match(/^\s*call\s+\S+/);
 		if (!this.delve.isApiV1 && isCallCommand) {
-			this.evaluateCallImpl(args).then(
-				(out) => {
-					const state = (<CommandOut>out).State;
-					const returnValues = state?.currentThread?.ReturnValues ?? [];
-					switch (returnValues.length) {
-						case 0:
-							response.body = { result: '', variablesReference: 0 };
-							break;
-						case 1:
-							response.body = this.convertDebugVariableToProtocolVariable(returnValues[0]);
-							break;
-						default:
-							// Go function can return multiple return values while
-							// DAP EvaluateResponse assumes a single result with possibly
-							// multiple children. So, create a fake DebugVariable
-							// that has all the results as children.
-							const returnResults = this.wrapReturnVars(returnValues);
-							response.body = this.convertDebugVariableToProtocolVariable(returnResults);
-							break;
-					}
-					this.sendResponse(response);
-					log('EvaluateCallResponse');
-				},
-				(err) => {
-					this.sendErrorResponse(
-						response,
-						2009,
-						'Unable to complete call: "{e}"',
-						{
-							e: err.toString()
-						},
-						args.context === 'watch' ? null : ErrorDestination.User
-					);
+			this.evaluateCallImpl(args).then((out) => {
+				const state = (<CommandOut>out).State;
+				const returnValues = state?.currentThread?.ReturnValues ?? [];
+				switch (returnValues.length) {
+					case 0:
+						response.body = { result: '', variablesReference: 0 };
+						break;
+					case 1:
+						response.body = this.convertDebugVariableToProtocolVariable(returnValues[0]);
+						break;
+					default:
+						// Go function can return multiple return values while
+						// DAP EvaluateResponse assumes a single result with possibly
+						// multiple children. So, create a fake DebugVariable
+						// that has all the results as children.
+						const returnResults = this.wrapReturnVars(returnValues);
+						response.body = this.convertDebugVariableToProtocolVariable(returnResults);
+						break;
 				}
-			);
+				this.sendResponse(response);
+				log('EvaluateCallResponse');
+			}, (err) => {
+				this.sendErrorResponse(response, 2009, 'Unable to complete call: "{e}"', {
+					e: err.toString()
+				}, args.context === 'watch' ? null : ErrorDestination.User);
+			});
 			return;
 		}
 		// Now handle it as a conventional evaluateRequest.
@@ -1908,17 +1794,12 @@ export class GoDebugSession extends LoggingDebugSession {
 				// No need to repeatedly show the error pop-up when expressions
 				// are continiously reevaluated in the Watch panel, which
 				// already displays errors.
-				this.sendErrorResponse(
-					response,
-					2009,
-					'Unable to eval expression: "{e}"',
-					{
-						e: err.toString()
-					},
-					args.context === 'watch' ? null : ErrorDestination.User
-				);
+				this.sendErrorResponse(response, 2009, 'Unable to eval expression: "{e}"', {
+					e: err.toString()
+				}, args.context === 'watch' ? null : ErrorDestination.User);
 			}
 		);
+
 	}
 
 	protected setVariableRequest(
@@ -1961,11 +1842,11 @@ export class GoDebugSession extends LoggingDebugSession {
 		args: LaunchRequestArguments | AttachRequestArguments
 	) {
 		this.logLevel =
-			args.trace === 'verbose' || args.trace === 'trace'
+			args.trace === 'verbose'
 				? Logger.LogLevel.Verbose
-				: args.trace === 'log' || args.trace === 'info' || args.trace === 'warn'
-				? Logger.LogLevel.Log
-				: Logger.LogLevel.Error;
+				: args.trace === 'log'
+					? Logger.LogLevel.Log
+					: Logger.LogLevel.Error;
 		const logPath =
 			this.logLevel !== Logger.LogLevel.Error ? path.join(os.tmpdir(), 'vscode-go-debug.txt') : undefined;
 		logger.setup(this.logLevel, logPath);
@@ -1995,7 +1876,6 @@ export class GoDebugSession extends LoggingDebugSession {
 		}
 
 		this.localPathSeparator = findPathSeparator(localPath);
-		this.substitutePath = [];
 		if (args.remotePath.length > 0) {
 			this.remotePathSeparator = findPathSeparator(args.remotePath);
 
@@ -2018,25 +1898,6 @@ export class GoDebugSession extends LoggingDebugSession {
 			) {
 				args.remotePath = args.remotePath.substring(0, args.remotePath.length - 1);
 			}
-
-			// Make the remotePath mapping the first one in substitutePath
-			// so that it will take precedence over the other mappings.
-			this.substitutePath.push({
-				from: normalizeSeparators(localPath),
-				to: normalizeSeparators(args.remotePath)
-			});
-		}
-
-		if (args.substitutePath) {
-			args.substitutePath.forEach((value) => {
-				if (!this.remotePathSeparator) {
-					this.remotePathSeparator = findPathSeparator(value.to);
-				}
-				this.substitutePath.push({
-					from: normalizeSeparators(value.from),
-					to: normalizeSeparators(value.to)
-				});
-			});
 		}
 
 		// Launch the Delve debugger on the program
@@ -2113,7 +1974,7 @@ export class GoDebugSession extends LoggingDebugSession {
 
 		if (this.remoteSourcesAndPackages.initializingRemoteSourceFiles) {
 			try {
-				await new Promise<void>((resolve) => {
+				await new Promise((resolve) => {
 					this.remoteSourcesAndPackages.on(RemoteSourcesAndPackages.INITIALIZED, () => {
 						resolve();
 					});
@@ -2186,8 +2047,8 @@ export class GoDebugSession extends LoggingDebugSession {
 									// Make sure that we compare the file names with the same separators.
 									const matchedBreakpoint = existingBreakpoints.find(
 										(existingBreakpoint) =>
-											existingBreakpoint.line === breakpointIn.line &&
-											compareFilePathIgnoreSeparator(existingBreakpoint.file, breakpointIn.file)
+											existingBreakpoint.line === breakpointIn.line
+											&& compareFilePathIgnoreSeparator(existingBreakpoint.file, breakpointIn.file)
 									);
 
 									if (!matchedBreakpoint) {
@@ -2242,7 +2103,7 @@ export class GoDebugSession extends LoggingDebugSession {
 			);
 	}
 
-	private async getPackageInfo(debugState: DebuggerState): Promise<string | void> {
+	private async getPackageInfo(debugState: DebuggerState): Promise<string> {
 		if (!debugState.currentThread || !debugState.currentThread.file) {
 			return Promise.resolve(null);
 		}
@@ -2392,8 +2253,7 @@ export class GoDebugSession extends LoggingDebugSession {
 				};
 			}
 
-			if (v.children.length === 0) {
-				// Shouldn't happen, but to be safe.
+			if (v.children.length === 0) { // Shouldn't happen, but to be safe.
 				return {
 					result: 'nil',
 					variablesReference: 0
@@ -2458,16 +2318,9 @@ export class GoDebugSession extends LoggingDebugSession {
 				}
 
 				if (this.skipStopEventOnce) {
-					log(
-						`Skipping stop event for ${reason}. The current Go routines is ${this.debugState?.currentGoroutine}.`
-					);
+					log(`Skipping stop event for ${reason}. The current Go routines is ${this.debugState?.currentGoroutine}.`);
 					this.skipStopEventOnce = false;
 					return;
-				}
-
-				if (this.overrideStopReason?.length > 0) {
-					reason = this.overrideStopReason;
-					this.overrideStopReason = '';
 				}
 
 				const stoppedEvent = new StoppedEvent(reason, this.debugState.currentGoroutine.id);
@@ -2487,16 +2340,13 @@ export class GoDebugSession extends LoggingDebugSession {
 	// instead of issuing a getDebugState call to Delve. Perhaps we want to
 	// do that to improve performance in the future.
 	private async isDebuggeeRunning(): Promise<boolean> {
-		if (this.debugState && this.debugState.exited) {
-			return false;
-		}
 		try {
 			this.debugState = await this.delve.getDebugState();
 			return this.debugState.Running;
 		} catch (error) {
 			this.logDelveError(error, 'Failed to get state');
 			// Fall back to the internal tracking.
-			return this.continueRequestRunning || this.nextRequestRunning;
+			return this.continueRequestRunning;
 		}
 	}
 
@@ -2554,8 +2404,9 @@ export class GoDebugSession extends LoggingDebugSession {
 	}
 
 	// evaluateCallImpl expects args.expression starts with the 'call ' command.
-	private evaluateCallImpl(args: DebugProtocol.EvaluateArguments): Thenable<DebuggerState | CommandOut> {
-		const callExpr = args.expression.trimLeft().slice('call '.length);
+	private evaluateCallImpl(args: DebugProtocol.EvaluateArguments)
+		: Thenable<DebuggerState | CommandOut> {
+		const callExpr = args.expression.trimLeft().slice(`call `.length);
 		// if args.frameID is 'not specified', expression is evaluated in the global scope, according to DAP.
 		// default to the topmost stack frame of the current goroutine
 		let goroutineId = -1;
@@ -2572,7 +2423,7 @@ export class GoDebugSession extends LoggingDebugSession {
 					goroutineID: goroutineId,
 					returnInfoLoadConfig: this.delve.loadConfig,
 					expr: callExpr,
-					unsafe: false
+					unsafe: false,
 				}
 			])
 			.then(
@@ -2653,7 +2504,7 @@ export class GoDebugSession extends LoggingDebugSession {
 		if (errorMessage === 'bad access') {
 			// Reuse the panic message from the Go runtime.
 			errorMessage =
-				'runtime error: invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]\nUnable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)';
+				`runtime error: invalid memory address or nil pointer dereference [signal SIGSEGV: segmentation violation]\nUnable to propogate EXC_BAD_ACCESS signal to target process and panic (see https://github.com/go-delve/delve/issues/852)`;
 		}
 
 		logError(message + ' - ' + errorMessage);
@@ -2744,8 +2595,7 @@ export class RemoteSourcesAndPackages extends EventEmitter {
 			// ListPackagesBuildInfo is not available on V1.
 			if (!delve.isApiV1 && this.remotePackagesBuildInfo.length === 0) {
 				const packagesBuildInfoResponse: ListPackagesBuildInfoOut = await delve.callPromise(
-					'ListPackagesBuildInfo',
-					[{ IncludeFiles: true }]
+					'ListPackagesBuildInfo', [{ IncludeFiles: true }]
 				);
 				if (packagesBuildInfoResponse && packagesBuildInfoResponse.List) {
 					this.remotePackagesBuildInfo = packagesBuildInfoResponse.List;
@@ -2809,8 +2659,7 @@ function queryGOROOT(cwd: any, env: any): Promise<string> {
 					return resolve('');
 				}
 				return resolve(stdout.trim());
-			}
-		);
+			});
 	});
 }
 
